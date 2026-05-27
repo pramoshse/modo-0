@@ -1,13 +1,28 @@
-import base64
+import streamlit as st
+import subprocess
+import os
+
+# 1. Instalación inmediata de Playwright
+@st.cache_resource
+def install_playwright():
+    # Usamos el comando simple que funciona en el otro código
+    subprocess.run(["playwright", "install", "chromium"])
+
+install_playwright()
+
+# Ahora sí, el resto de imports
+import asyncio
+from playwright.async_api import async_playwright
 import datetime
+import base64
+# ... resto de tus imports (openpyxl, PIL, docx, etc.)
+
 import html
 import io
 import json
-import os
 import re
 from typing import Any, Dict, Iterable, List, Optional
 
-import streamlit as st
 import streamlit.components.v1 as components
 
 
