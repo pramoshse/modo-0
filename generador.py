@@ -31,7 +31,7 @@ import streamlit.components.v1 as components
 # ============================================================
 
 st.set_page_config(
-    page_title="Generador de Procedimientos LOTO",
+    page_title="Generador de Procedimientos Modo 0",
     layout="wide",
 )
 
@@ -1535,7 +1535,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("GENERADOR DE PROCEDIMIENTOS LOTO")
+st.title("GENERADOR DE PROCEDIMIENTOS MODO 0")
 st.markdown(
     """
     <div class="soft-note">
