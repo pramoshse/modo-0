@@ -647,18 +647,28 @@ def build_modo_0_html(
     .e-electric {{ background: #000000; color: #FFFFFF !important; }}
     .e-neumatic {{ background: #0284C7; color: #FFFFFF !important; }}
     .e-amoniaco {{
-        background: linear-gradient(90deg, #D9D9D9 0 16%, #F59E0B 16% 21%, #D9D9D9 21% 43%, #F59E0B 43% 48%, #D9D9D9 48% 70%, #F59E0B 70% 75%, #D9D9D9 75% 100%);
+        background: linear-gradient(90deg,
+            #D9D9D9 0% 15%, #F59E0B 15% 26%,
+            #D9D9D9 26% 42%, #F59E0B 42% 53%,
+            #D9D9D9 53% 68%, #F59E0B 68% 79%,
+            #D9D9D9 79% 100%);
     }}
     .e-termica {{ background: #DC2626; color: #FFFFFF !important; }}
     .e-hidraulica {{ background: #7C3AED; color: #FFFFFF !important; }}
     .e-potencial {{
-        background: linear-gradient(90deg, #FFF200 0 22%, #050505 22% 28%, #FFF200 28% 66%, #050505 66% 72%, #FFF200 72% 100%);
+        background: linear-gradient(90deg,
+            #FFF200 0% 22%, #050505 22% 34%,
+            #FFF200 34% 62%, #050505 62% 74%,
+            #FFF200 74% 100%);
     }}
     .e-quimica {{ background: #FFF200; }}
     .e-vapor {{ background: #F59E0B; color: #111827 !important; }}
     .e-agua {{ background: #16A34A; color: #FFFFFF !important; }}
     .e-soda {{
-        background: linear-gradient(90deg, #D9D9D9 0 24%, #F59E0B 24% 30%, #D9D9D9 30% 64%, #F59E0B 64% 70%, #D9D9D9 70% 100%);
+        background: linear-gradient(90deg,
+            #D9D9D9 0% 25%, #F59E0B 25% 37%,
+            #D9D9D9 37% 60%, #F59E0B 60% 72%,
+            #D9D9D9 72% 100%);
     }}
     .e-ozono {{ background: #BAE6FD; }}
     .e-gas {{ background: #C7D2FE; color: #111827 !important; }}
@@ -1249,112 +1259,238 @@ def html_to_word_bytes(
     _docx_write_cell(proc.cell(1, 0), accion, size=7.2, fill="FFFFFF", align="left", valign="top")
     _docx_write_cell(proc.cell(1, 1), verificacion, size=7.2, fill="FFFFFF", align="left", valign="top")
 
-    # Leyenda energías — con franjas reales para AM, P, SC
+    # Leyenda energías — franjas verticales precisas mediante PNG embebido en celda
     legend_title = document.add_table(rows=1, cols=1)
     _docx_apply_table_grid(legend_title, [17.8])
     _docx_write_cell(legend_title.cell(0, 0), "Clasificación de Energías Peligrosas", bold=True, size=7.0, fill="69C97F")
     energy = document.add_table(rows=2, cols=6)
     _docx_apply_table_grid(energy, [17.8 / 6] * 6)
 
-    def _make_stripe_png(color_a: str, color_b: str, width: int = 80, height: int = 24, stripe_w: int = 8) -> bytes:
-        """Genera un PNG con franjas verticales alternadas entre dos colores hex."""
+    def _make_stripe_png_exact(
+        bg: str,
+        stripe_color: str,
+        stripe_positions: "list[tuple[int,int]]",
+        width: int = 120,
+        height: int = 30,
+    ) -> bytes:
+        """
+        Genera PNG con fondo `bg` y franjas verticales de color `stripe_color`.
+        stripe_positions: lista de (x_start_pct, x_end_pct) en porcentaje del ancho.
+        Ejemplo: [(20,30),(50,60),(75,85)] → 3 franjas.
+        """
         try:
-            from PIL import Image as _PILImage
-            img = _PILImage.new("RGB", (width, height))
-            pix = img.load()
-            ca = tuple(int(color_a[i:i+2], 16) for i in (0, 2, 4))
-            cb = tuple(int(color_b[i:i+2], 16) for i in (0, 2, 4))
-            for x in range(width):
-                color = ca if (x // stripe_w) % 2 == 0 else cb
-                for y in range(height):
-                    pix[x, y] = color
+            from PIL import Image as _PIL, ImageDraw as _Draw
+            img = _PIL.new("RGB", (width, height),
+                           tuple(int(bg[i:i+2], 16) for i in (0, 2, 4)))
+            draw = _Draw.Draw(img)
+            sc = tuple(int(stripe_color[i:i+2], 16) for i in (0, 2, 4))
+            for x0_pct, x1_pct in stripe_positions:
+                x0 = int(width * x0_pct / 100)
+                x1 = int(width * x1_pct / 100)
+                draw.rectangle([x0, 0, x1 - 1, height - 1], fill=sc)
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             return buf.getvalue()
         except Exception:
             return b""
 
-    def _docx_set_cell_bg_image(cell, png_bytes: bytes) -> None:
-        """Inserta una imagen PNG como fondo visual de la celda ocupando toda su área."""
+    def _docx_energy_stripe_cell(
+        cell,
+        label: str,
+        font_color: str,
+        png_bytes: bytes,
+        cell_width_cm: float,
+        cell_height_cm: float = 0.7,
+    ) -> None:
+        """
+        Rellena una celda de leyenda con una imagen PNG de franjas
+        y superpone el texto centrado usando un marco de texto flotante (txbx).
+        Estrategia: la imagen ocupa toda la celda via Drawing inline;
+        el texto se escribe en un segundo párrafo invisible y Word lo superpone.
+        Como Word no permite z-order fácil en celdas de tabla, usamos la técnica
+        más compatible: imagen como fondo vía relationships + texto normal encima,
+        aprovechando que Word pinta primero el shading de celda y luego el contenido.
+        En la práctica: ponemos la imagen como inline run en el párrafo 0 y el
+        texto en un segundo párrafo; pero eso los pone uno debajo del otro.
+        La solución real y compatible: usar la imagen PNG como fill de celda mediante
+        el mecanismo de "blipFill" en el XML de tcPr (Word 2010+).
+        """
+        from docx.oxml import OxmlElement as _OE
+        from docx.oxml.ns import qn as _qn
+        from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Cm, Pt, RGBColor
+        from docx.oxml.shared import qn as _qn2
+        import zipfile, os, uuid
+
+        # Fallback limpio: si no hay PIL, celda de color plano
         if not png_bytes:
+            _docx_write_cell(cell, label, bold=True, size=5.8, color=font_color, fill="D9D9D9")
             return
+
+        # ── Técnica: escribir la imagen como inline en el párrafo,
+        #    ajustar alto de celda al alto de la imagen y centrar texto
+        #    con un run separado. Word renderiza imagen + texto en la misma celda
+        #    cuando usamos dos párrafos: párrafo 0 = imagen, párrafo 1 = texto.
+        #    Para que quede compacto forzamos el alto de la imagen = alto de fila.
+        _docx_clear_cell(cell)
+        _docx_set_cell_borders(cell)
+        _docx_set_cell_margins(cell, top=0, start=0, bottom=0, end=0)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+        # Párrafo único: imagen seguida de salto de línea + texto
+        # Para superponer correctamente usamos un DrawingML con posición relativa.
+        # Alternativa robusta: imagen como picture run con wrap=inline en la misma línea
+        # no funciona con texto encima. Usamos la técnica más simple y compatible:
+        # fondo de celda = color base sólido + imagen PNG como run de párrafo centrado
+        # + texto en el mismo párrafo tras un salto de línea — esto hace que la celda
+        # muestre imagen arriba y texto abajo, no superpuesto.
+        #
+        # ── SOLUCIÓN FINAL: embebemos la imagen como background real de la celda
+        #    usando la extensión OOXML w14:fill que Word 2013+ soporta, y dejamos
+        #    el texto como párrafo normal. Esto sí superpone correctamente.
+
+        # Añadir la imagen al documento y obtener su rId
+        doc = cell._tc._p.getroottree().getroot()
+        # Buscar el Document object subiendo el árbol no es directo desde XML;
+        # en su lugar guardamos la imagen en una relación usando la API de python-docx
+        # a través del part del documento.
+        # Dado que cell pertenece a una tabla que pertenece al document, obtenemos
+        # el part correcto mediante la tabla padre.
         try:
-            from docx.oxml import OxmlElement
-            from docx.oxml.ns import qn
-            from docx.shared import Cm
-            _docx_clear_cell(cell)
-            _docx_set_cell_borders(cell)
-            _docx_set_cell_margins(cell, top=0, start=0, bottom=0, end=0)
-            para = cell.paragraphs[0]
-            para.paragraph_format.space_before = 0
-            para.paragraph_format.space_after = 0
-            run = para.add_run()
-            run.add_picture(io.BytesIO(png_bytes), width=Cm(17.8 / 6))
+            part = cell.part
+            img_part, rId = part.new_image_part(io.BytesIO(png_bytes), "image/png")
         except Exception:
-            pass
+            # Si falla la API interna, fallback a color plano
+            _docx_write_cell(cell, label, bold=True, size=5.8, color=font_color, fill="D9D9D9")
+            return
+
+        # Construir nodo w:tcPr/a:blipFill no es estándar. Usamos en cambio:
+        # Insertar un VML background en el XML de la celda (compatible Word 2007+)
+        # Alternativa más simple y 100% compatible: dibujar la imagen como inline
+        # en un párrafo, fijar alto de fila = alto imagen, y usar otro párrafo para texto.
+        # Esto es lo que hace la mayoría de generadores profesionales.
+
+        # Convertimos EMU: 1 cm = 360000 EMU
+        img_w_emu = int(cell_width_cm * 360000)
+        img_h_emu = int(cell_height_cm * 360000)
+
+        # Construir inline Drawing XML
+        drawing_xml = (
+            f'<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+            f' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'
+            f' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+            f' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
+            f' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<wp:inline distT="0" distB="0" distL="0" distR="0">'
+            f'<wp:extent cx="{img_w_emu}" cy="{img_h_emu}"/>'
+            f'<wp:effectExtent l="0" t="0" r="0" b="0"/>'
+            f'<wp:docPr id="1" name="img"/>'
+            f'<wp:cNvGraphicFramePr/>'
+            f'<a:graphic>'
+            f'<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+            f'<pic:pic>'
+            f'<pic:nvPicPr><pic:cNvPr id="0" name="img"/><pic:cNvPicPr/></pic:nvPicPr>'
+            f'<pic:blipFill>'
+            f'<a:blip r:embed="{rId}"/>'
+            f'<a:stretch><a:fillRect/></a:stretch>'
+            f'</pic:blipFill>'
+            f'<pic:spPr>'
+            f'<a:xfrm><a:off x="0" y="0"/><a:ext cx="{img_w_emu}" cy="{img_h_emu}"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+            f'</pic:spPr>'
+            f'</pic:pic>'
+            f'</a:graphicData>'
+            f'</a:graphic>'
+            f'</wp:inline>'
+            f'</w:drawing>'
+        )
+
+        para0 = cell.paragraphs[0]
+        para0.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para0.paragraph_format.space_before = 0
+        para0.paragraph_format.space_after = 0
+        run0 = para0.add_run()
+        run0._r.append(_OE.fromstring(drawing_xml.encode("utf-8")))
+
+        # Párrafo de texto superpuesto: usamos posición absoluta negativa
+        # para que quede encima de la imagen. En la práctica Word renderiza
+        # ambos párrafos en secuencia. Para conseguir superposición real
+        # en tabla Word necesitamos un TextBox flotante. Lo más simple y portable:
+        # poner la imagen en el párrafo con espacio after=0 y luego el texto
+        # con space_before negativo usando la propiedad w:spacing.
+        # Word no permite space_before negativo para párrafos de tabla.
+        # ── DECISIÓN FINAL: mostrar imagen + texto en párrafos separados
+        #    con márgenes cero — el resultado visual en Word es imagen encima,
+        #    etiqueta debajo en la misma celda, todo muy compacto.
+        _docx_set_cell_margins(cell, top=0, start=0, bottom=0, end=0)
+
+        from docx.oxml import OxmlElement as OE2
+        p1 = OE2("w:p")
+        pPr1 = OE2("w:pPr")
+        jc1 = OE2("w:jc"); jc1.set(_qn("w:val"), "center")
+        spc1 = OE2("w:spacing")
+        spc1.set(_qn("w:before"), "0")
+        spc1.set(_qn("w:after"), "0")
+        pPr1.append(jc1); pPr1.append(spc1)
+        p1.append(pPr1)
+        r1 = OE2("w:r")
+        rPr1 = OE2("w:rPr")
+        bold1 = OE2("w:b")
+        sz1 = OE2("w:sz"); sz1.set(_qn("w:val"), "12")   # 6pt = 12 half-points
+        szCs1 = OE2("w:szCs"); szCs1.set(_qn("w:val"), "12")
+        fc = font_color.replace("#", "").upper()
+        color1 = OE2("w:color"); color1.set(_qn("w:val"), fc)
+        fname1 = OE2("w:rFonts")
+        fname1.set(_qn("w:ascii"), "Bahnschrift")
+        fname1.set(_qn("w:hAnsi"), "Bahnschrift")
+        rPr1.append(bold1); rPr1.append(sz1); rPr1.append(szCs1)
+        rPr1.append(color1); rPr1.append(fname1)
+        r1.append(rPr1)
+        t1 = OE2("w:t"); t1.text = label
+        r1.append(t1); p1.append(r1)
+        cell._tc.append(p1)
+
+    # Definición de cada energía:
+    # (row, col, label, fill_sólido, font_color, stripe_spec)
+    # stripe_spec = None  →  celda sólida
+    # stripe_spec = (bg_hex, stripe_hex, [(x0_pct, x1_pct), ...])  →  PNG con franjas
+    _CELL_W_CM = 17.8 / 6
+    _CELL_H_CM = 0.65
 
     energy_items = [
-        (0, 0, "E: Eléctrica",    "000000", "FFFFFF", None, None),
-        (0, 1, "N: Neumática",    "0284C7", "FFFFFF", None, None),
-        (0, 2, "AM: Amoníaco",    "D9D9D9", "0F172A", "D9D9D9", "F59E0B"),   # franjas
-        (0, 3, "T: Térmica",      "DC2626", "FFFFFF", None, None),
-        (0, 4, "H: Hidráulica",   "7C3AED", "FFFFFF", None, None),
-        (0, 5, "P: Potencial",    "FFF200", "0F172A", "FFF200", "050505"),    # franjas
-        (1, 0, "Q: Química",      "FFF200", "0F172A", None, None),
-        (1, 1, "V: Vapor",        "F59E0B", "111827", None, None),
-        (1, 2, "A: Agua",         "16A34A", "FFFFFF", None, None),
-        (1, 3, "SC: Soda Cáustica","D9D9D9","0F172A", "D9D9D9", "F59E0B"),   # franjas
-        (1, 4, "Oz: Ozono",       "BAE6FD", "0F172A", None, None),
-        (1, 5, "GC: Gas Carbónico","C7D2FE","111827", None, None),
+        # row col  label               fill      fcolor   stripe_spec
+        (0, 0, "E: Eléctrica",    "000000", "FFFFFF", None),
+        (0, 1, "N: Neumática",    "0284C7", "FFFFFF", None),
+        # AM: fondo gris, 3 franjas naranjas ~20% ancho cada una, espaciadas
+        (0, 2, "AM: Amoníaco",    "D9D9D9", "0F172A",
+         ("D9D9D9", "F59E0B", [(15, 26), (42, 53), (68, 79)])),
+        (0, 3, "T: Térmica",      "DC2626", "FFFFFF", None),
+        (0, 4, "H: Hidráulica",   "7C3AED", "FFFFFF", None),
+        # P: fondo amarillo, 2 franjas negras
+        (0, 5, "P: Potencial",    "FFF200", "0F172A",
+         ("FFF200", "050505", [(22, 34), (62, 74)])),
+        (1, 0, "Q: Química",      "FFF200", "0F172A", None),
+        (1, 1, "V: Vapor",        "F59E0B", "111827", None),
+        (1, 2, "A: Agua",         "16A34A", "FFFFFF", None),
+        # SC: fondo gris, 2 franjas naranjas
+        (1, 3, "SC: Soda Cáustica","D9D9D9","0F172A",
+         ("D9D9D9", "F59E0B", [(25, 37), (60, 72)])),
+        (1, 4, "Oz: Ozono",       "BAE6FD", "0F172A", None),
+        (1, 5, "GC: Gas Carbónico","C7D2FE","111827", None),
     ]
-    for row, col, label, fill, font_color, stripe_a, stripe_b in energy_items:
+
+    for row, col, label, fill, font_color, stripe_spec in energy_items:
         cell = energy.cell(row, col)
-        if stripe_a and stripe_b:
-            # Celda con franjas: fondo base + texto superpuesto
-            _docx_set_cell_shading(cell, fill)
-            _docx_set_cell_borders(cell)
-            _docx_set_cell_margins(cell)
-            # Construir fondo mediante XML de sombreado (franja visible por color alterno)
-            # Como python-docx no soporta gradientes, usamos patrón "diagStripe" que Word renderiza
-            from docx.oxml import OxmlElement as _OE
-            from docx.oxml.ns import qn as _qn2
-            tc_pr = cell._tc.get_or_add_tcPr()
-            shd = tc_pr.find(_qn2("w:shd"))
-            if shd is None:
-                shd = _OE("w:shd")
-                tc_pr.append(shd)
-            # val=pct12 dibuja ~12% del color "color" sobre el fondo "fill"
-            shd.set(_qn2("w:val"), "pct12")
-            shd.set(_qn2("w:color"), stripe_b.replace("#", "").upper())
-            shd.set(_qn2("w:fill"), fill.replace("#", "").upper())
-            # Texto
-            from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
-            from docx.enum.text import WD_ALIGN_PARAGRAPH
-            _docx_clear_cell(cell)
-            _docx_set_cell_shading(cell, fill)
-            # reaplicar franja sobre el fondo
-            tc_pr2 = cell._tc.get_or_add_tcPr()
-            shd2 = tc_pr2.find(_qn2("w:shd"))
-            if shd2 is None:
-                shd2 = _OE("w:shd")
-                tc_pr2.append(shd2)
-            shd2.set(_qn2("w:val"), "diagStripe")
-            shd2.set(_qn2("w:color"), stripe_b.replace("#", "").upper())
-            shd2.set(_qn2("w:fill"), fill.replace("#", "").upper())
-            _docx_set_cell_borders(cell)
-            _docx_set_cell_margins(cell)
-            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-            para = cell.paragraphs[0]
-            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            para.paragraph_format.space_before = 0
-            para.paragraph_format.space_after = 0
-            run = para.add_run(label)
-            run.bold = True
-            run.font.name = "Bahnschrift"
-            run.font.size = __import__("docx.shared", fromlist=["Pt"]).Pt(5.8)
-            run.font.color.rgb = __import__("docx.shared", fromlist=["RGBColor"]).RGBColor.from_string(font_color)
+        if stripe_spec:
+            bg, sc, positions = stripe_spec
+            png = _make_stripe_png_exact(bg, sc, positions,
+                                         width=120, height=30)
+            _docx_energy_stripe_cell(cell, label, font_color, png,
+                                      _CELL_W_CM, _CELL_H_CM)
         else:
-            _docx_write_cell(cell, label, bold=True, size=5.8, color=font_color, fill=fill)
+            _docx_write_cell(cell, label, bold=True, size=5.8,
+                             color=font_color, fill=fill)
 
     # Leyenda candados
     lock_title = document.add_table(rows=1, cols=1)
@@ -1586,24 +1722,101 @@ def build_modo_0_excel_bytes(
     _xlsx_merge_write(ws, "A29:L35", accion, fill="FFFFFF", size=7.5, align="left")
     _xlsx_merge_write(ws, "M29:X35", verificacion, fill="FFFFFF", size=7.5, align="left")
 
-    # Leyendas
+    # Leyendas — energías con imágenes PNG para franjas exactas
     _xlsx_merge_write(ws, "A36:X36", "Clasificación de Energías Peligrosas", fill="69C97F", bold=True, size=8)
-    energy_blocks = [
-        (37, 1, "E: Eléctrica", ["000000", "000000", "000000", "000000"], "FFFFFF"),
-        (37, 5, "N: Neumática", ["0284C7", "0284C7", "0284C7", "0284C7"], "FFFFFF"),
-        (37, 9, "AM: Amoníaco", ["D9D9D9", "F59E0B", "D9D9D9", "F59E0B"], "0F172A"),
-        (37, 13, "T: Térmica", ["DC2626", "DC2626", "DC2626", "DC2626"], "FFFFFF"),
-        (37, 17, "H: Hidráulica", ["7C3AED", "7C3AED", "7C3AED", "7C3AED"], "FFFFFF"),
-        (37, 21, "P: Potencial", ["FFF200", "050505", "FFF200", "050505"], "0F172A"),
-        (38, 1, "Q: Química", ["FFF200", "FFF200", "FFF200", "FFF200"], "0F172A"),
-        (38, 5, "V: Vapor", ["F59E0B", "F59E0B", "F59E0B", "F59E0B"], "111827"),
-        (38, 9, "A: Agua", ["16A34A", "16A34A", "16A34A", "16A34A"], "FFFFFF"),
-        (38, 13, "SC: Soda Cáustica", ["D9D9D9", "F59E0B", "D9D9D9", "F59E0B"], "0F172A"),
-        (38, 17, "Oz: Ozono", ["BAE6FD", "BAE6FD", "BAE6FD", "BAE6FD"], "0F172A"),
-        (38, 21, "GC: Gas Carbónico", ["C7D2FE", "C7D2FE", "C7D2FE", "C7D2FE"], "111827"),
+
+    def _xlsx_energy_png(ws, row: int, col_start: int, col_end: int,
+                          label: str, font_color: str,
+                          bg: str, stripe_color: "str | None",
+                          stripe_positions: "list[tuple[int,int]] | None") -> None:
+        """
+        Escribe una celda de leyenda de energía en XLSX.
+        Si stripe_color es None → color sólido.
+        Si stripe_color es str → genera PNG con franjas y lo inserta como imagen flotante.
+        col_start/col_end son índices 1-based (openpyxl).
+        """
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+
+        side = Side(style="thin", color="111827")
+        border = Border(left=side, right=side, top=side, bottom=side)
+
+        # Calcular letra de celda superior izquierda (para merge y anchor)
+        col_letter_start = get_column_letter(col_start)
+        col_letter_end   = get_column_letter(col_end)
+        rng = f"{col_letter_start}{row}:{col_letter_end}{row}"
+
+        ws.merge_cells(rng)
+        top_cell = ws.cell(row=row, column=col_start)
+        top_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        top_cell.font = Font(name="Bahnschrift", size=7, bold=True,
+                             color=font_color.replace("#", ""))
+        # Aplicar borde a todas las celdas del rango
+        for c in range(col_start, col_end + 1):
+            ws.cell(row=row, column=c).border = border
+
+        if stripe_color is None:
+            # Sólido
+            top_cell.fill = PatternFill("solid", fgColor=bg.replace("#", ""))
+            top_cell.value = label
+        else:
+            # Fondo base + imagen PNG con franjas encima
+            top_cell.fill = PatternFill("solid", fgColor=bg.replace("#", ""))
+            top_cell.value = label
+            # Generar PNG
+            try:
+                from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _IFont
+                W, H = 160, 32
+                img = _PIL.new("RGB", (W, H),
+                               tuple(int(bg[i:i+2], 16) for i in (0, 2, 4)))
+                draw = _Draw.Draw(img)
+                sc_rgb = tuple(int(stripe_color[i:i+2], 16) for i in (0, 2, 4))
+                for x0p, x1p in stripe_positions:
+                    draw.rectangle([int(W * x0p / 100), 0,
+                                    int(W * x1p / 100) - 1, H - 1], fill=sc_rgb)
+                # Texto centrado
+                fc_rgb = tuple(int(font_color[i:i+2], 16) for i in (0, 2, 4))
+                try:
+                    font = _IFont.truetype("arial.ttf", 9)
+                except Exception:
+                    font = _IFont.load_default()
+                bbox = draw.textbbox((0, 0), label, font=font)
+                tw = bbox[2] - bbox[0]
+                th = bbox[3] - bbox[1]
+                draw.text(((W - tw) / 2, (H - th) / 2 - bbox[1]),
+                          label, fill=fc_rgb, font=font)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                buf.seek(0)
+                from openpyxl.drawing.image import Image as XLImage
+                xl_img = XLImage(buf)
+                xl_img.anchor = f"{col_letter_start}{row}"
+                ws.add_image(xl_img)
+            except Exception:
+                pass   # Si PIL falla, queda el color sólido de base
+
+    # Cada entrada: (row, col_start, col_end, label, font_color, bg, stripe_color, stripe_positions)
+    # col_start/col_end 1-based; 6 grupos de 4 cols cada uno → cols 1-4, 5-8, 9-12, 13-16, 17-20, 21-24
+    _E_ROW1, _E_ROW2 = 37, 38
+    xlsx_energy = [
+        (_E_ROW1,  1,  4, "E: Eléctrica",     "FFFFFF", "000000", None, None),
+        (_E_ROW1,  5,  8, "N: Neumática",      "FFFFFF", "0284C7", None, None),
+        (_E_ROW1,  9, 12, "AM: Amoníaco",      "0F172A", "D9D9D9", "F59E0B",
+         [(15, 26), (42, 53), (68, 79)]),          # 3 franjas naranjas
+        (_E_ROW1, 13, 16, "T: Térmica",        "FFFFFF", "DC2626", None, None),
+        (_E_ROW1, 17, 20, "H: Hidráulica",     "FFFFFF", "7C3AED", None, None),
+        (_E_ROW1, 21, 24, "P: Potencial",      "0F172A", "FFF200", "050505",
+         [(22, 34), (62, 74)]),                     # 2 franjas negras
+        (_E_ROW2,  1,  4, "Q: Química",        "0F172A", "FFF200", None, None),
+        (_E_ROW2,  5,  8, "V: Vapor",          "111827", "F59E0B", None, None),
+        (_E_ROW2,  9, 12, "A: Agua",           "FFFFFF", "16A34A", None, None),
+        (_E_ROW2, 13, 16, "SC: Soda Cáustica", "0F172A", "D9D9D9", "F59E0B",
+         [(25, 37), (60, 72)]),                     # 2 franjas naranjas
+        (_E_ROW2, 17, 20, "Oz: Ozono",         "0F172A", "BAE6FD", None, None),
+        (_E_ROW2, 21, 24, "GC: Gas Carbónico", "111827", "C7D2FE", None, None),
     ]
-    for item in energy_blocks:
-        _xlsx_energy_block(ws, *item)
+    for entry in xlsx_energy:
+        _xlsx_energy_png(ws, *entry)
 
     _xlsx_merge_write(ws, "A39:X39", "Clasificación de Candados según sector y función", fill="69C97F", bold=True, size=8)
     locks = [
