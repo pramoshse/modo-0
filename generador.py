@@ -1354,7 +1354,7 @@ def html_to_word_bytes(
             f' simplePos="0" locked="1" layoutInCell="1" allowOverlap="0" relativeHeight="1">'
             f'<wp:simplePos x="0" y="0"/>'
             f'<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>'
-            f'<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+            f'<wp:positionV relativeFrom="paragraph"><wp:posOffset>-152400</wp:posOffset></wp:positionV>'
             f'<wp:extent cx="{cx}" cy="{cy}"/>'
             f'<wp:effectExtent l="0" t="0" r="0" b="0"/>'
             f'<wp:wrapNone/>'
