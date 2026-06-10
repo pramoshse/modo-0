@@ -1300,154 +1300,53 @@ def html_to_word_bytes(
         font_color: str,
         png_bytes: bytes,
         cell_width_cm: float,
-        cell_height_cm: float = 0.7,
     ) -> None:
         """
-        Rellena una celda de leyenda con una imagen PNG de franjas
-        y superpone el texto centrado usando un marco de texto flotante (txbx).
-        Estrategia: la imagen ocupa toda la celda via Drawing inline;
-        el texto se escribe en un segundo párrafo invisible y Word lo superpone.
-        Como Word no permite z-order fácil en celdas de tabla, usamos la técnica
-        más compatible: imagen como fondo vía relationships + texto normal encima,
-        aprovechando que Word pinta primero el shading de celda y luego el contenido.
-        En la práctica: ponemos la imagen como inline run en el párrafo 0 y el
-        texto en un segundo párrafo; pero eso los pone uno debajo del otro.
-        La solución real y compatible: usar la imagen PNG como fill de celda mediante
-        el mecanismo de "blipFill" en el XML de tcPr (Word 2010+).
+        Celda de leyenda con franjas: imagen PNG (ancho = celda) en párrafo 0,
+        etiqueta en párrafo 1. Usa run.add_picture — API 100% pública de python-docx.
         """
         from docx.oxml import OxmlElement as _OE
         from docx.oxml.ns import qn as _qn
         from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.shared import Cm, Pt, RGBColor
-        from docx.oxml.shared import qn as _qn2
-        import zipfile, os, uuid
 
-        # Fallback limpio: si no hay PIL, celda de color plano
         if not png_bytes:
             _docx_write_cell(cell, label, bold=True, size=5.8, color=font_color, fill="D9D9D9")
             return
 
-        # ── Técnica: escribir la imagen como inline en el párrafo,
-        #    ajustar alto de celda al alto de la imagen y centrar texto
-        #    con un run separado. Word renderiza imagen + texto en la misma celda
-        #    cuando usamos dos párrafos: párrafo 0 = imagen, párrafo 1 = texto.
-        #    Para que quede compacto forzamos el alto de la imagen = alto de fila.
         _docx_clear_cell(cell)
         _docx_set_cell_borders(cell)
         _docx_set_cell_margins(cell, top=0, start=0, bottom=0, end=0)
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
-        # Párrafo único: imagen seguida de salto de línea + texto
-        # Para superponer correctamente usamos un DrawingML con posición relativa.
-        # Alternativa robusta: imagen como picture run con wrap=inline en la misma línea
-        # no funciona con texto encima. Usamos la técnica más simple y compatible:
-        # fondo de celda = color base sólido + imagen PNG como run de párrafo centrado
-        # + texto en el mismo párrafo tras un salto de línea — esto hace que la celda
-        # muestre imagen arriba y texto abajo, no superpuesto.
-        #
-        # ── SOLUCIÓN FINAL: embebemos la imagen como background real de la celda
-        #    usando la extensión OOXML w14:fill que Word 2013+ soporta, y dejamos
-        #    el texto como párrafo normal. Esto sí superpone correctamente.
+        # Párrafo 0: imagen PNG con las franjas exactas
+        para_img = cell.paragraphs[0]
+        para_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para_img.paragraph_format.space_before = 0
+        para_img.paragraph_format.space_after = 0
+        run_img = para_img.add_run()
+        run_img.add_picture(io.BytesIO(png_bytes), width=Cm(cell_width_cm))
 
-        # Añadir la imagen al documento y obtener su rId
-        doc = cell._tc._p.getroottree().getroot()
-        # Buscar el Document object subiendo el árbol no es directo desde XML;
-        # en su lugar guardamos la imagen en una relación usando la API de python-docx
-        # a través del part del documento.
-        # Dado que cell pertenece a una tabla que pertenece al document, obtenemos
-        # el part correcto mediante la tabla padre.
-        try:
-            part = cell.part
-            img_part, rId = part.new_image_part(io.BytesIO(png_bytes), "image/png")
-        except Exception:
-            # Si falla la API interna, fallback a color plano
-            _docx_write_cell(cell, label, bold=True, size=5.8, color=font_color, fill="D9D9D9")
-            return
-
-        # Construir nodo w:tcPr/a:blipFill no es estándar. Usamos en cambio:
-        # Insertar un VML background en el XML de la celda (compatible Word 2007+)
-        # Alternativa más simple y 100% compatible: dibujar la imagen como inline
-        # en un párrafo, fijar alto de fila = alto imagen, y usar otro párrafo para texto.
-        # Esto es lo que hace la mayoría de generadores profesionales.
-
-        # Convertimos EMU: 1 cm = 360000 EMU
-        img_w_emu = int(cell_width_cm * 360000)
-        img_h_emu = int(cell_height_cm * 360000)
-
-        # Construir inline Drawing XML
-        drawing_xml = (
-            f'<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
-            f' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'
-            f' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
-            f' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
-            f' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            f'<wp:inline distT="0" distB="0" distL="0" distR="0">'
-            f'<wp:extent cx="{img_w_emu}" cy="{img_h_emu}"/>'
-            f'<wp:effectExtent l="0" t="0" r="0" b="0"/>'
-            f'<wp:docPr id="1" name="img"/>'
-            f'<wp:cNvGraphicFramePr/>'
-            f'<a:graphic>'
-            f'<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
-            f'<pic:pic>'
-            f'<pic:nvPicPr><pic:cNvPr id="0" name="img"/><pic:cNvPicPr/></pic:nvPicPr>'
-            f'<pic:blipFill>'
-            f'<a:blip r:embed="{rId}"/>'
-            f'<a:stretch><a:fillRect/></a:stretch>'
-            f'</pic:blipFill>'
-            f'<pic:spPr>'
-            f'<a:xfrm><a:off x="0" y="0"/><a:ext cx="{img_w_emu}" cy="{img_h_emu}"/></a:xfrm>'
-            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
-            f'</pic:spPr>'
-            f'</pic:pic>'
-            f'</a:graphicData>'
-            f'</a:graphic>'
-            f'</wp:inline>'
-            f'</w:drawing>'
-        )
-
-        para0 = cell.paragraphs[0]
-        para0.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        para0.paragraph_format.space_before = 0
-        para0.paragraph_format.space_after = 0
-        run0 = para0.add_run()
-        run0._r.append(_OE.fromstring(drawing_xml.encode("utf-8")))
-
-        # Párrafo de texto superpuesto: usamos posición absoluta negativa
-        # para que quede encima de la imagen. En la práctica Word renderiza
-        # ambos párrafos en secuencia. Para conseguir superposición real
-        # en tabla Word necesitamos un TextBox flotante. Lo más simple y portable:
-        # poner la imagen en el párrafo con espacio after=0 y luego el texto
-        # con space_before negativo usando la propiedad w:spacing.
-        # Word no permite space_before negativo para párrafos de tabla.
-        # ── DECISIÓN FINAL: mostrar imagen + texto en párrafos separados
-        #    con márgenes cero — el resultado visual en Word es imagen encima,
-        #    etiqueta debajo en la misma celda, todo muy compacto.
-        _docx_set_cell_margins(cell, top=0, start=0, bottom=0, end=0)
-
-        from docx.oxml import OxmlElement as OE2
-        p1 = OE2("w:p")
-        pPr1 = OE2("w:pPr")
-        jc1 = OE2("w:jc"); jc1.set(_qn("w:val"), "center")
-        spc1 = OE2("w:spacing")
-        spc1.set(_qn("w:before"), "0")
-        spc1.set(_qn("w:after"), "0")
-        pPr1.append(jc1); pPr1.append(spc1)
-        p1.append(pPr1)
-        r1 = OE2("w:r")
-        rPr1 = OE2("w:rPr")
-        bold1 = OE2("w:b")
-        sz1 = OE2("w:sz"); sz1.set(_qn("w:val"), "12")   # 6pt = 12 half-points
-        szCs1 = OE2("w:szCs"); szCs1.set(_qn("w:val"), "12")
-        fc = font_color.replace("#", "").upper()
-        color1 = OE2("w:color"); color1.set(_qn("w:val"), fc)
-        fname1 = OE2("w:rFonts")
-        fname1.set(_qn("w:ascii"), "Bahnschrift")
-        fname1.set(_qn("w:hAnsi"), "Bahnschrift")
-        rPr1.append(bold1); rPr1.append(sz1); rPr1.append(szCs1)
-        rPr1.append(color1); rPr1.append(fname1)
-        r1.append(rPr1)
-        t1 = OE2("w:t"); t1.text = label
+        # Párrafo 1: etiqueta de texto centrada debajo
+        p1 = _OE("w:p")
+        pPr = _OE("w:pPr")
+        jc = _OE("w:jc"); jc.set(_qn("w:val"), "center")
+        spc = _OE("w:spacing")
+        spc.set(_qn("w:before"), "0"); spc.set(_qn("w:after"), "0")
+        pPr.append(jc); pPr.append(spc)
+        p1.append(pPr)
+        r1 = _OE("w:r")
+        rPr = _OE("w:rPr")
+        b = _OE("w:b")
+        sz = _OE("w:sz"); sz.set(_qn("w:val"), "11")   # 5.5 pt
+        szCs = _OE("w:szCs"); szCs.set(_qn("w:val"), "11")
+        col_el = _OE("w:color"); col_el.set(_qn("w:val"), font_color.replace("#","").upper())
+        fn = _OE("w:rFonts")
+        fn.set(_qn("w:ascii"), "Bahnschrift"); fn.set(_qn("w:hAnsi"), "Bahnschrift")
+        rPr.append(b); rPr.append(fn); rPr.append(sz); rPr.append(szCs); rPr.append(col_el)
+        r1.append(rPr)
+        t1 = _OE("w:t"); t1.text = label
         r1.append(t1); p1.append(r1)
         cell._tc.append(p1)
 
@@ -1487,7 +1386,7 @@ def html_to_word_bytes(
             png = _make_stripe_png_exact(bg, sc, positions,
                                          width=120, height=30)
             _docx_energy_stripe_cell(cell, label, font_color, png,
-                                      _CELL_W_CM, _CELL_H_CM)
+                                      _CELL_W_CM)
         else:
             _docx_write_cell(cell, label, bold=True, size=5.8,
                              color=font_color, fill=fill)
