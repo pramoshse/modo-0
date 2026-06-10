@@ -879,7 +879,7 @@ def build_modo_0_html(
     <div class="legend-title">Clasificación de Candados según sector y función</div>
     <table class="lock-legend">
         <tr>
-            <td class="l-mmto">MMTO<br>Industrial</td>
+            <td class="l-mmto">Mantenimiento<br>Industrial</td>
             <td class="l-calidad">Calidad</td>
             <td class="l-produccion">Producción</td>
             <td class="l-edilicio">Mantenimiento Edilicio<br>Contratistas</td>
@@ -1459,7 +1459,7 @@ def html_to_word_bytes(
     locks = document.add_table(rows=1, cols=5)
     _docx_apply_table_grid(locks, [17.8 / 5] * 5)
     lock_items = [
-        ("MMTO\nIndustrial", "EF0000", "FFFFFF"),
+        ("Mantenimiento\nIndustrial", "EF0000", "FFFFFF"),
         ("Calidad", "FFF200", "0F172A"),
         ("Producción", "16A34A", "FFFFFF"),
         ("Mantenimiento Edilicio\nContratistas", "0F7DBD", "FFFFFF"),
@@ -1780,7 +1780,7 @@ def build_modo_0_excel_bytes(
 
     _xlsx_merge_write(ws, "A39:X39", "Clasificación de Candados según sector y función", fill="69C97F", bold=True, size=8)
     locks = [
-        ("A40:E41", "MMTO\nIndustrial", "EF0000", "FFFFFF"),
+        ("A40:E41", "Mantenimiento\nIndustrial", "EF0000", "FFFFFF"),
         ("F40:J41", "Calidad", "FFF200", "0F172A"),
         ("K40:N41", "Producción", "16A34A", "FFFFFF"),
         ("O40:S41", "Mantenimiento Edilicio\nContratistas", "0F7DBD", "FFFFFF"),
