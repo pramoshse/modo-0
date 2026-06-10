@@ -5,17 +5,14 @@ import os
 # 1. Instalación inmediata de Playwright
 @st.cache_resource
 def install_playwright():
-    # Usamos el comando simple que funciona en el otro código
     subprocess.run(["playwright", "install", "chromium"])
 
 install_playwright()
 
-# Ahora sí, el resto de imports
 import asyncio
 from playwright.async_api import async_playwright
 import datetime
 import base64
-# ... resto de tus imports (openpyxl, PIL, docx, etc.)
 
 import html
 import io
@@ -84,14 +81,10 @@ st.markdown(
 # UTILIDADES DE DATOS
 # ============================================================
 
-
 def _html(value: Any) -> str:
-    """Escapa texto para insertarlo de forma segura en HTML."""
     if value is None:
         return ""
     return html.escape(str(value), quote=True)
-
-
 
 def _normalize(value: Any) -> str:
     if value is None:
@@ -100,21 +93,14 @@ def _normalize(value: Any) -> str:
     value = re.sub(r"\s+", " ", value)
     return value
 
-
-
 def _upper(value: Any) -> str:
     return _normalize(value).upper()
 
-
-
 def _get_from_dict(source: Dict[str, Any], keys: Iterable[str], default: str = "") -> Any:
-    """Busca el primer valor no vacío dentro de un diccionario usando nombres alternativos."""
     for key in keys:
         if key in source and source.get(key) not in (None, "", [], {}):
             return source.get(key)
     return default
-
-
 
 def _get_nested(source: Dict[str, Any], path: Iterable[str], default: Any = "") -> Any:
     current: Any = source
@@ -124,13 +110,9 @@ def _get_nested(source: Dict[str, Any], path: Iterable[str], default: Any = "") 
         current = current[key]
     return current if current not in (None, "") else default
 
-
-
 def _split_tasks(raw: Any) -> List[str]:
-    """Convierte tareas en lista limpia, aceptando texto libre, listas, tuplas o diccionarios."""
     if raw is None:
         return []
-
     if isinstance(raw, dict):
         for key in ("tareas", "items", "seleccionadas", "predefinidas", "values"):
             if key in raw and raw.get(key) not in (None, "", [], {}):
@@ -140,42 +122,33 @@ def _split_tasks(raw: Any) -> List[str]:
             ["tarea", "actividad", "descripcion", "descripción", "descripcion_tarea", "nombre", "texto", "label"],
             "",
         )
-        return [str(candidate).strip(" -•	")] if str(candidate).strip() else []
-
+        return [str(candidate).strip(" -•\t")] if str(candidate).strip() else []
     if isinstance(raw, (list, tuple)):
         tasks: List[str] = []
         for item in raw:
             if isinstance(item, dict):
                 tasks.extend(_split_tasks(item))
             else:
-                item_text = str(item).strip(" -•	")
+                item_text = str(item).strip(" -•\t")
                 if item_text:
                     tasks.append(item_text)
         return [task for task in tasks if task]
-
     text = str(raw).strip()
     if not text:
         return []
-
     parts = []
     for line in re.split(r"[\n\r]+", text):
-        line = line.strip(" -•	")
+        line = line.strip(" -•\t")
         if not line:
             continue
-        # Si el usuario cargó una frase larga separada por comas, se conserva como una tarea completa.
         parts.append(line)
     return parts
-
-
 
 def _mode_is_modo_0(mode: Any) -> bool:
     clean = _normalize(mode).lower().replace("°", "")
     return clean in {"modo 0", "modo0", "0", "m0"}
 
-
-
 def _auto_negocio_from_sitio(sitio: Any, default: str = "") -> str:
-    """Determina el negocio por regla solicitada: Planta/CEDI -> Bebidas; resto -> Ingenios."""
     sitio_txt = _normalize(sitio).lower()
     if not sitio_txt:
         return _normalize(default)
@@ -183,13 +156,11 @@ def _auto_negocio_from_sitio(sitio: Any, default: str = "") -> str:
         return "Bebidas"
     return "Ingenios"
 
-
 def _bytes_to_data_uri(content: bytes, mime: str = "image/png") -> str:
     if not content:
         return ""
     encoded = base64.b64encode(content).decode("utf-8")
     return f"data:{mime or 'image/png'};base64,{encoded}"
-
 
 def _mime_from_filename(filename: str, default: str = "image/png") -> str:
     ext = os.path.splitext(str(filename or ""))[1].lower()
@@ -200,7 +171,6 @@ def _mime_from_filename(filename: str, default: str = "image/png") -> str:
         ".webp": "image/webp",
     }.get(ext, default)
 
-
 def _uploaded_file_data_uri(uploaded_file) -> str:
     if uploaded_file is None:
         return ""
@@ -210,7 +180,6 @@ def _uploaded_file_data_uri(uploaded_file) -> str:
         return _bytes_to_data_uri(content, mime)
     except Exception:
         return ""
-
 
 def _local_file_data_uri(candidates: Iterable[str]) -> str:
     for candidate in candidates:
@@ -224,8 +193,6 @@ def _local_file_data_uri(candidates: Iterable[str]) -> str:
             continue
     return ""
 
-
-
 def _photo_data_uri(payload: Dict[str, Any]) -> str:
     photo = payload.get("equipment_photo") or {}
     content = photo.get("content_base64")
@@ -234,14 +201,10 @@ def _photo_data_uri(payload: Dict[str, Any]) -> str:
         return ""
     return f"data:{mime};base64,{content}"
 
-
-
 def _logo_data_uri(uploaded_logo=None) -> str:
-    """Carga el logo local arca.png por defecto y permite reemplazarlo por archivo subido."""
     uploaded_uri = _uploaded_file_data_uri(uploaded_logo)
     if uploaded_uri:
         return uploaded_uri
-
     base_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
     return _local_file_data_uri(
         [
@@ -252,10 +215,21 @@ def _logo_data_uri(uploaded_logo=None) -> str:
         ]
     )
 
-
+def _lsr_data_uri() -> str:
+    """Carga la imagen LSR.png desde la carpeta de la aplicación."""
+    base_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+    return _local_file_data_uri(
+        [
+            os.path.join(base_dir, "LSR.png"),
+            os.path.join(base_dir, "lsr.png"),
+            os.path.join(os.getcwd(), "LSR.png"),
+            os.path.join(os.getcwd(), "lsr.png"),
+            "/home/ubuntu/LSR.png",
+            "/home/ubuntu/upload/LSR.png",
+        ]
+    )
 
 def extract_procedure_context(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Extrae datos del borrador de forma tolerante a cambios de nombre de variables."""
     widgets = payload.get("widgets") if isinstance(payload.get("widgets"), dict) else {}
     computed = payload.get("computed") if isinstance(payload.get("computed"), dict) else {}
 
@@ -267,36 +241,19 @@ def extract_procedure_context(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     tasks_raw = _get_from_dict(
         widgets,
-        [
-            "tareas_predefinidas",
-            "tareas_predefinidas_txt",
-            "tareas_preseleccionadas",
-            "tareas_seleccionadas",
-        ],
+        ["tareas_predefinidas", "tareas_predefinidas_txt", "tareas_preseleccionadas", "tareas_seleccionadas"],
         "",
     )
     if not tasks_raw:
         tasks_raw = _get_from_dict(
             payload,
-            [
-                "tareas_predefinidas",
-                "tareas_predefinidas_txt",
-                "tareas_preseleccionadas",
-                "tareas_seleccionadas",
-            ],
+            ["tareas_predefinidas", "tareas_predefinidas_txt", "tareas_preseleccionadas", "tareas_seleccionadas"],
             "",
         )
     if not tasks_raw:
         tasks_raw = _get_from_dict(
             widgets,
-            [
-                "tareas_txt",
-                "tareas",
-                "tareas_aplicables",
-                "descripcion_tareas",
-                "actividad",
-                "actividades",
-            ],
+            ["tareas_txt", "tareas", "tareas_aplicables", "descripcion_tareas", "actividad", "actividades"],
             "",
         )
     tasks = _split_tasks(tasks_raw)
@@ -342,11 +299,8 @@ def extract_procedure_context(payload: Dict[str, Any]) -> Dict[str, Any]:
 # PLANTILLA HTML/PDF MODO 0
 # ============================================================
 
-
 def _tasks_html(tasks: List[str]) -> str:
     return "".join(f"<div class='task-line'>- {_html(task)}</div>" for task in tasks)
-
-
 
 def _equipment_meta(ctx: Dict[str, Any]) -> str:
     meta = []
@@ -359,7 +313,6 @@ def _equipment_meta(ctx: Dict[str, Any]) -> str:
     return " · ".join(meta)
 
 
-
 def build_modo_0_html(
     ctx: Dict[str, Any],
     *,
@@ -368,13 +321,14 @@ def build_modo_0_html(
     fecha: datetime.date,
     organizacion: str,
     logo_uri: str = "",
+    lsr_uri: str = "",
     personal_afectado: str,
     personal_autorizado: str,
     elaborado_por: str,
     aprobado_por: str,
     puesto_elaborado: str = "",
     puesto_aprobado: str = "",
-    fecha_firma: datetime.date | str | None = None,
+    fecha_firma: "datetime.date | str | None" = None,
 ) -> str:
     fecha_txt = fecha.strftime("%d/%m/%Y") if isinstance(fecha, datetime.date) else _normalize(fecha)
     fecha_firma_txt = fecha_firma.strftime("%d/%m/%Y") if isinstance(fecha_firma, datetime.date) else (_normalize(fecha_firma) or fecha_txt)
@@ -392,6 +346,13 @@ def build_modo_0_html(
         f"<img class='equipment-photo' src='{photo_uri}' alt='Foto del paso a paso'>"
         if photo_uri
         else "<div class='photo-placeholder'>FOTO DEL PASO A PASO</div>"
+    )
+
+    # LSR image block — shown only when the image is available
+    lsr_block = (
+        f"<img class='lsr-img' src='{lsr_uri}' alt='LSR'>"
+        if lsr_uri
+        else "<div class='lsr-placeholder'>LSR</div>"
     )
 
     html_doc = f"""
@@ -635,6 +596,7 @@ def build_modo_0_html(
         background: #F8FAFC;
     }}
 
+    /* ── Tabla de procedimiento: solo Acción y Verificación ── */
     .dark-head th {{
         background: #3B3B3B;
         color: #FFFFFF;
@@ -645,17 +607,24 @@ def build_modo_0_html(
     }}
 
     .procedure-table td {{
-        height: 40px;
         font-size: 7.8px;
-        text-align: center;
+        text-align: left;
         background: #FFFFFF;
+        vertical-align: top;
+        padding: 7px 9px;
     }}
 
     .procedure-note {{
-        text-align: center;
         font-size: 7.2px;
-        line-height: 1.12;
-        padding: 4px 4px !important;
+        line-height: 1.35;
+    }}
+
+    .procedure-note p {{
+        margin: 0 0 5px 0;
+    }}
+
+    .procedure-note p:last-child {{
+        margin-bottom: 0;
     }}
 
     .legend-title {{
@@ -738,6 +707,36 @@ def build_modo_0_html(
         border-radius: 5px 5px 0 0;
     }}
 
+    /* ── LSR ── */
+    .lsr-section {{
+        border-left: 1px solid #111827;
+        border-right: 1px solid #111827;
+        border-bottom: 1px solid #111827;
+        text-align: center;
+        padding: 8px 6px;
+        background: #FFFFFF;
+    }}
+
+    .lsr-img {{
+        max-width: 100%;
+        max-height: 160px;
+        object-fit: contain;
+    }}
+
+    .lsr-placeholder {{
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94A3B8;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        border: 1px dashed #CBD5E1;
+        background: #F8FAFC;
+    }}
+
+    /* ── Firmas ── */
     .footer-sign {{
         margin-top: 0;
     }}
@@ -764,6 +763,8 @@ def build_modo_0_html(
 </head>
 <body>
 <div class="sheet">
+
+    <!-- ENCABEZADO -->
     <table>
         <tr>
             <td class="logo-cell" rowspan="3">{logo_block}</td>
@@ -782,6 +783,7 @@ def build_modo_0_html(
         </tr>
     </table>
 
+    <!-- INFO SITIO + PERSONAL -->
     <table>
         <tr>
             <td class="info-box" style="width: 62px;">
@@ -811,6 +813,7 @@ def build_modo_0_html(
         </tr>
     </table>
 
+    <!-- EQUIPO -->
     <table>
         <tr>
             <td class="equipment-label">Equipo:</td>
@@ -821,6 +824,7 @@ def build_modo_0_html(
         </tr>
     </table>
 
+    <!-- TAREAS -->
     <table>
         <tr class="red-header">
             <th style="width: 62px;">Puntos de<br>Bloqueo</th>
@@ -834,45 +838,39 @@ def build_modo_0_html(
         </tr>
     </table>
 
+    <!-- BARRA SECCIÓN -->
     <div class="red-bar">Procedimiento - Control de Energías Peligrosas</div>
 
+    <!-- FOTO -->
     <table>
         <tr>
             <td class="photo-area">{photo_block}</td>
         </tr>
     </table>
 
+    <!-- PROCEDIMIENTO: solo Acción y Verificación (50/50) -->
     <table class="procedure-table">
         <tr class="dark-head">
-            <th style="width: 62px;">Punto de<br>Bloqueo</th>
-            <th style="width: 86px;">Fuente de Energía</th>
-            <th style="width: 86px;">Magnitud</th>
-            <th style="width: 112px;">Ubicación</th>
-            <th style="width: 142px;">Acción</th>
-            <th style="width: 158px;">Verificación</th>
-            <th style="width: 88px;">Dispositivo(s) de<br>Aislamiento</th>
+            <th style="width: 50%;">Acción</th>
+            <th style="width: 50%;">Verificación</th>
         </tr>
         <tr>
-            <td>No aplica</td>
-            <td>No Aplica</td>
-            <td>No Aplica</td>
-            <td>No Aplica</td>
             <td class="procedure-note">
-                1. Operar la máquina exclusivamente mediante el panel de Interfaz Hombre-Máquina (HMI) o mediante los controles normales asignados al operador, sin realizar intervención directa sobre el equipo.<br><br>
-                2. Mantener la operación dentro de las condiciones normales previstas, sin introducir manos u otros elementos en zonas de riesgo, partes móviles o sectores energizados.<br><br>
-                3. No retirar, anular, puentear ni desactivar resguardos, enclavamientos o cualquier dispositivo de seguridad durante la ejecución de la tarea.<br><br>
-                4. Detener la actividad y escalar la evaluación si la tarea requiere retirar, superar o intervenir cualquier sistema de protección de la máquina.
+                <p>1. Operar la máquina exclusivamente mediante el panel de Interfaz Hombre-Máquina (HMI) o mediante los controles normales asignados al operador, sin realizar intervención directa sobre el equipo.</p>
+                <p>2. Mantener la operación dentro de las condiciones normales previstas, sin introducir manos u otros elementos en zonas de riesgo, partes móviles o sectores energizados.</p>
+                <p>3. No retirar, anular, puentear ni desactivar resguardos, enclavamientos o cualquier dispositivo de seguridad durante la ejecución de la tarea.</p>
+                <p>4. Detener la actividad y escalar la evaluación si la tarea requiere retirar, superar o intervenir cualquier sistema de protección de la máquina.</p>
             </td>
             <td class="procedure-note">
-                1. Confirmar visualmente que todos los resguardos y dispositivos de protección se encuentran instalados, en posición correcta y en condiciones funcionales.<br><br>
-                2. Verificar que el equipo opera dentro de sus parámetros normales y que no existe interacción directa del operador con partes móviles, energizadas o zonas de peligro.<br><br>
-                3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.<br><br>
-                4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0.
+                <p>1. Confirmar visualmente que todos los resguardos y dispositivos de protección se encuentran instalados, en posición correcta y en condiciones funcionales.</p>
+                <p>2. Verificar que el equipo opera dentro de sus parámetros normales y que no existe interacción directa del operador con partes móviles, energizadas o zonas de peligro.</p>
+                <p>3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.</p>
+                <p>4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0.</p>
             </td>
-            <td>No requerido</td>
         </tr>
     </table>
 
+    <!-- LEYENDA ENERGÍAS -->
     <div class="legend-title">Clasificación de Energías Peligrosas</div>
     <table class="energy-legend">
         <tr>
@@ -893,6 +891,7 @@ def build_modo_0_html(
         </tr>
     </table>
 
+    <!-- LEYENDA CANDADOS -->
     <div class="legend-title">Clasificación de Candados según sector y función</div>
     <table class="lock-legend">
         <tr>
@@ -904,6 +903,12 @@ def build_modo_0_html(
         </tr>
     </table>
 
+    <!-- IMAGEN LSR -->
+    <div class="lsr-section">
+        {lsr_block}
+    </div>
+
+    <!-- FIRMAS -->
     <table class="footer-sign">
         <tr>
             <td class="signature-cell">
@@ -916,6 +921,7 @@ def build_modo_0_html(
             </td>
         </tr>
     </table>
+
 </div>
 </body>
 </html>
@@ -923,25 +929,23 @@ def build_modo_0_html(
     return html_doc
 
 
+# ============================================================
+# EXPORTACIÓN PDF
+# ============================================================
 
 def _get_playwright_sync_api():
-    """Carga Playwright de forma diferida para generar PDF desde Chromium."""
     try:
         module = __import__("playwright.sync_api", fromlist=["sync_playwright"])
         return getattr(module, "sync_playwright", None)
     except Exception:
         return None
 
-
-
 def html_to_pdf_bytes(html_doc: str) -> bytes:
-    """Convierte el HTML del procedimiento en PDF usando Chromium vía Playwright."""
     sync_playwright = _get_playwright_sync_api()
     if sync_playwright is None:
         raise RuntimeError(
             "La exportación PDF requiere Playwright. Instalá la dependencia con: pip install playwright && python -m playwright install chromium."
         )
-
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -960,42 +964,36 @@ def html_to_pdf_bytes(html_doc: str) -> bytes:
             return pdf_bytes
     except Exception as exc:
         raise RuntimeError(
-            "No se pudo generar el PDF con Playwright. Verificá que Chromium esté instalado con: python -m playwright install chromium. "
+            "No se pudo generar el PDF con Playwright. "
             f"Detalle: {exc}"
         ) from exc
 
 
+# ============================================================
+# EXPORTACIÓN WORD
+# ============================================================
 
-def _data_uri_to_bytes(data_uri: str) -> tuple[bytes, str]:
-    """Convierte un data URI en bytes y extensión sugerida para insertar imágenes reales."""
+def _data_uri_to_bytes(data_uri: str) -> "tuple[bytes, str]":
     if not data_uri or not isinstance(data_uri, str) or not data_uri.startswith("data:"):
         return b"", ".png"
     header, _, encoded = data_uri.partition(",")
     if not encoded:
         return b"", ".png"
     mime = header.split(";", 1)[0].replace("data:", "").strip().lower()
-    ext = {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/jpg": ".jpg",
-        "image/webp": ".webp",
-    }.get(mime, ".png")
+    ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/webp": ".webp"}.get(mime, ".png")
     try:
         return base64.b64decode(encoded), ext
     except Exception:
         return b"", ext
-
 
 def _fecha_export_txt(value: Any) -> str:
     if isinstance(value, datetime.date):
         return value.strftime("%d/%m/%Y")
     return _normalize(value)
 
-
 def _docx_set_cell_shading(cell, fill: str) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-
     tc_pr = cell._tc.get_or_add_tcPr()
     shd = tc_pr.find(qn("w:shd"))
     if shd is None:
@@ -1003,11 +1001,9 @@ def _docx_set_cell_shading(cell, fill: str) -> None:
         tc_pr.append(shd)
     shd.set(qn("w:fill"), fill.replace("#", "").upper())
 
-
 def _docx_set_cell_borders(cell, color: str = "111827", size: str = "6") -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-
     tc_pr = cell._tc.get_or_add_tcPr()
     tc_borders = tc_pr.first_child_found_in("w:tcBorders")
     if tc_borders is None:
@@ -1024,11 +1020,9 @@ def _docx_set_cell_borders(cell, color: str = "111827", size: str = "6") -> None
         element.set(qn("w:space"), "0")
         element.set(qn("w:color"), color.replace("#", "").upper())
 
-
 def _docx_set_cell_margins(cell, top: int = 45, start: int = 45, bottom: int = 45, end: int = 45) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-
     tc_pr = cell._tc.get_or_add_tcPr()
     tc_mar = tc_pr.first_child_found_in("w:tcMar")
     if tc_mar is None:
@@ -1042,12 +1036,10 @@ def _docx_set_cell_margins(cell, top: int = 45, start: int = 45, bottom: int = 4
         node.set(qn("w:w"), str(v))
         node.set(qn("w:type"), "dxa")
 
-
 def _docx_set_cell_width(cell, width_cm: float) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Cm
-
     cell.width = Cm(width_cm)
     tc_pr = cell._tc.get_or_add_tcPr()
     tc_w = tc_pr.first_child_found_in("w:tcW")
@@ -1057,10 +1049,8 @@ def _docx_set_cell_width(cell, width_cm: float) -> None:
     tc_w.set(qn("w:w"), str(int(width_cm * 567)))
     tc_w.set(qn("w:type"), "dxa")
 
-
 def _docx_clear_cell(cell) -> None:
     cell.text = ""
-
 
 def _docx_write_cell(
     cell,
@@ -1069,13 +1059,12 @@ def _docx_write_cell(
     bold: bool = False,
     size: float = 7.5,
     color: str = "0F172A",
-    fill: str | None = None,
+    fill: "str | None" = None,
     align: str = "center",
     valign: str = "center",
 ) -> None:
     from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-
     _docx_clear_cell(cell)
     if fill:
         _docx_set_cell_shading(cell, fill)
@@ -1099,11 +1088,9 @@ def _docx_write_cell(
     run.font.size = __import__("docx.shared", fromlist=["Pt"]).Pt(size)
     run.font.color.rgb = __import__("docx.shared", fromlist=["RGBColor"]).RGBColor.from_string(color.replace("#", "").upper())
 
-
-def _docx_apply_table_grid(table, widths_cm: list[float] | None = None) -> None:
+def _docx_apply_table_grid(table, widths_cm: "list[float] | None" = None) -> None:
     from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ROW_HEIGHT_RULE
     from docx.shared import Cm
-
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
     for row in table.rows:
@@ -1120,32 +1107,23 @@ def _docx_apply_table_grid(table, widths_cm: list[float] | None = None) -> None:
             except Exception:
                 pass
 
-
-def _docx_add_spacer(document, points: float = 1.0) -> None:
-    from docx.shared import Pt
-
-    p = document.add_paragraph()
-    p.paragraph_format.space_before = 0
-    p.paragraph_format.space_after = Pt(points)
-
-
 def html_to_word_bytes(
     ctx: Dict[str, Any],
     *,
     codigo: str,
     revision: str,
-    fecha: datetime.date | str,
+    fecha: "datetime.date | str",
     organizacion: str,
     logo_uri: str = "",
+    lsr_uri: str = "",
     personal_afectado: str,
     personal_autorizado: str,
     elaborado_por: str,
     aprobado_por: str,
     puesto_elaborado: str = "",
     puesto_aprobado: str = "",
-    fecha_firma: datetime.date | str | None = None,
+    fecha_firma: "datetime.date | str | None" = None,
 ) -> bytes:
-    """Genera un DOCX editable con tablas, textos, colores y bordes reales."""
     from docx import Document
     from docx.enum.section import WD_SECTION_START
     from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -1170,12 +1148,12 @@ def html_to_word_bytes(
     style.font.name = "Bahnschrift"
     style.font.size = Pt(7.5)
 
+    # Encabezado
     header = document.add_table(rows=3, cols=5)
     _docx_apply_table_grid(header, [2.0, 5.0, 5.2, 2.4, 3.2])
     header.cell(0, 0).merge(header.cell(2, 0))
     header.cell(0, 1).merge(header.cell(0, 2))
     header.cell(1, 1).merge(header.cell(2, 2))
-
     logo_cell = header.cell(0, 0)
     _docx_write_cell(logo_cell, "", fill="FFFFFF")
     logo_bytes, _ = _data_uri_to_bytes(logo_uri)
@@ -1188,22 +1166,18 @@ def html_to_word_bytes(
             _docx_write_cell(logo_cell, organizacion, bold=True, size=7.0, color="B91C1C", fill="FFFFFF")
     else:
         _docx_write_cell(logo_cell, organizacion, bold=True, size=7.0, color="B91C1C", fill="FFFFFF")
-
     _docx_write_cell(header.cell(0, 1), "CONTROL DE ENERGÍAS PELIGROSAS", bold=True, size=8.5, color="FFFFFF", fill="050505")
     _docx_write_cell(header.cell(1, 1), "PROCEDIMIENTO ESPECÍFICO PARA CONTROL DE ENERGÍAS", bold=True, size=9.0, fill="FFFFFF")
     for row_idx, label, value in ((0, "Código", codigo), (1, "Revisión", revision), (2, "Fecha", fecha_txt)):
         _docx_write_cell(header.cell(row_idx, 3), label, bold=True, size=7.5, fill="E5E7EB")
         _docx_write_cell(header.cell(row_idx, 4), value, bold=True, size=7.5, fill="F8FAFC")
 
+    # Info sitio + personal
     info = document.add_table(rows=1, cols=5)
     _docx_apply_table_grid(info, [2.0, 2.8, 2.8, 3.6, 6.6])
     for idx, (label, value) in enumerate(
-        [
-            ("Negocio:", ctx.get("negocio") or "-"),
-            ("Sitio:", ctx.get("sitio") or "-"),
-            ("Área:", ctx.get("area") or "-"),
-            ("Línea:", ctx.get("linea") or "-"),
-        ]
+        [("Negocio:", ctx.get("negocio") or "-"), ("Sitio:", ctx.get("sitio") or "-"),
+         ("Área:", ctx.get("area") or "-"), ("Línea:", ctx.get("linea") or "-")]
     ):
         _docx_write_cell(info.cell(0, idx), f"{label}\n{value}", bold=False, size=7.2, fill="FFFFFF")
     person_cell = info.cell(0, 4)
@@ -1216,11 +1190,13 @@ def html_to_word_bytes(
     _docx_write_cell(nested.cell(2, 0), "Personal autorizado - Puestos de trabajo", bold=True, size=6.8, fill="69C97F")
     _docx_write_cell(nested.cell(3, 0), personal_autorizado, size=6.8, fill="FFFFFF")
 
+    # Equipo
     equipment = document.add_table(rows=1, cols=2)
     _docx_apply_table_grid(equipment, [2.0, 15.8])
     _docx_write_cell(equipment.cell(0, 0), "Equipo:", bold=True, size=7.4, fill="F8FAFC")
     _docx_write_cell(equipment.cell(0, 1), f"{_upper(ctx.get('equipo') or 'EQUIPO')}\n{equipo_meta}", bold=True, size=9.0, fill="FFFFFF")
 
+    # Tareas
     tasks_table = document.add_table(rows=2, cols=3)
     _docx_apply_table_grid(tasks_table, [2.0, 2.8, 13.0])
     for idx, title in enumerate(["Puntos de\nBloqueo", "Modo de\nIntervención", "Listado de tareas aplicable al presente procedimiento"]):
@@ -1230,10 +1206,12 @@ def html_to_word_bytes(
     tasks_text = "\n".join(f"- {task}" for task in (ctx.get("tareas") or []))
     _docx_write_cell(tasks_table.cell(1, 2), tasks_text, size=6.8, fill="FFFFFF", align="left")
 
+    # Barra
     bar = document.add_table(rows=1, cols=1)
     _docx_apply_table_grid(bar, [17.8])
     _docx_write_cell(bar.cell(0, 0), "Procedimiento - Control de Energías Peligrosas", bold=True, size=7.6, fill="69C97F")
 
+    # Foto
     photo_table = document.add_table(rows=1, cols=1)
     _docx_apply_table_grid(photo_table, [17.8])
     photo_cell = photo_table.cell(0, 0)
@@ -1249,27 +1227,30 @@ def html_to_word_bytes(
         except Exception:
             _docx_write_cell(photo_cell, "FOTO DEL PASO A PASO", bold=True, size=11.0, color="94A3B8", fill="FFFFFF")
 
-    proc = document.add_table(rows=2, cols=7)
-    _docx_apply_table_grid(proc, [1.7, 2.3, 2.0, 2.5, 3.3, 3.8, 2.2])
-    proc_headers = ["Punto de\nBloqueo", "Fuente de Energía", "Magnitud", "Ubicación", "Acción", "Verificación", "Dispositivo(s) de\nAislamiento"]
-    for idx, title in enumerate(proc_headers):
-        _docx_write_cell(proc.cell(0, idx), title, bold=True, size=6.2, color="FFFFFF", fill="3B3B3B")
-    proc_values = [
-        "No aplica",
-        "No Aplica",
-        "No Aplica",
-        "No Aplica",
-        "1. Operar la máquina exclusivamente mediante el panel de Interfaz Hombre-Máquina (HMI) o mediante los controles normales asignados al operador, sin realizar intervención directa sobre el equipo.\n\n2. Mantener la operación dentro de las condiciones normales previstas, sin introducir manos u otros elementos en zonas de riesgo, partes móviles o sectores energizados.\n\n3. No retirar, anular, puentear ni desactivar resguardos, enclavamientos o cualquier dispositivo de seguridad durante la ejecución de la tarea.\n\n4. Detener la actividad y escalar la evaluación si la tarea requiere retirar, superar o intervenir cualquier sistema de protección de la máquina.",
-        "1. Confirmar visualmente que todos los resguardos y dispositivos de protección se encuentran instalados, en posición correcta y en condiciones funcionales.\n\n2. Verificar que el equipo opera dentro de sus parámetros normales y que no existe interacción directa del operador con partes móviles, energizadas o zonas de peligro.\n\n3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.\n\n4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0.",
-        "No requerido",
-    ]
-    for idx, value in enumerate(proc_values):
-        _docx_write_cell(proc.cell(1, idx), value, size=5.5 if idx in (4, 5) else 6.6, fill="FFFFFF")
+    # Procedimiento: solo Acción y Verificación
+    proc = document.add_table(rows=2, cols=2)
+    _docx_apply_table_grid(proc, [8.9, 8.9])
+    _docx_write_cell(proc.cell(0, 0), "Acción", bold=True, size=7.0, color="FFFFFF", fill="3B3B3B")
+    _docx_write_cell(proc.cell(0, 1), "Verificación", bold=True, size=7.0, color="FFFFFF", fill="3B3B3B")
+    accion = (
+        "1. Operar la máquina exclusivamente mediante el panel de Interfaz Hombre-Máquina (HMI) o mediante los controles normales asignados al operador, sin realizar intervención directa sobre el equipo.\n\n"
+        "2. Mantener la operación dentro de las condiciones normales previstas, sin introducir manos u otros elementos en zonas de riesgo, partes móviles o sectores energizados.\n\n"
+        "3. No retirar, anular, puentear ni desactivar resguardos, enclavamientos o cualquier dispositivo de seguridad durante la ejecución de la tarea.\n\n"
+        "4. Detener la actividad y escalar la evaluación si la tarea requiere retirar, superar o intervenir cualquier sistema de protección de la máquina."
+    )
+    verificacion = (
+        "1. Confirmar visualmente que todos los resguardos y dispositivos de protección se encuentran instalados, en posición correcta y en condiciones funcionales.\n\n"
+        "2. Verificar que el equipo opera dentro de sus parámetros normales y que no existe interacción directa del operador con partes móviles, energizadas o zonas de peligro.\n\n"
+        "3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.\n\n"
+        "4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0."
+    )
+    _docx_write_cell(proc.cell(1, 0), accion, size=6.0, fill="FFFFFF", align="left", valign="top")
+    _docx_write_cell(proc.cell(1, 1), verificacion, size=6.0, fill="FFFFFF", align="left", valign="top")
 
+    # Leyenda energías
     legend_title = document.add_table(rows=1, cols=1)
     _docx_apply_table_grid(legend_title, [17.8])
     _docx_write_cell(legend_title.cell(0, 0), "Clasificación de Energías Peligrosas", bold=True, size=7.0, fill="69C97F")
-
     energy = document.add_table(rows=2, cols=6)
     _docx_apply_table_grid(energy, [17.8 / 6] * 6)
     energy_items = [
@@ -1289,10 +1270,10 @@ def html_to_word_bytes(
     for row, col, label, fill, font_color in energy_items:
         _docx_write_cell(energy.cell(row, col), label, bold=True, size=5.8, color=font_color, fill=fill)
 
+    # Leyenda candados
     lock_title = document.add_table(rows=1, cols=1)
     _docx_apply_table_grid(lock_title, [17.8])
     _docx_write_cell(lock_title.cell(0, 0), "Clasificación de Candados según sector y función", bold=True, size=7.0, fill="69C97F")
-
     locks = document.add_table(rows=1, cols=5)
     _docx_apply_table_grid(locks, [17.8 / 5] * 5)
     lock_items = [
@@ -1305,6 +1286,23 @@ def html_to_word_bytes(
     for idx, (label, fill, font_color) in enumerate(lock_items):
         _docx_write_cell(locks.cell(0, idx), label, bold=True, size=5.8, color=font_color, fill=fill)
 
+    # Imagen LSR
+    lsr_table = document.add_table(rows=1, cols=1)
+    _docx_apply_table_grid(lsr_table, [17.8])
+    lsr_cell = lsr_table.cell(0, 0)
+    _docx_write_cell(lsr_cell, "LSR", bold=True, size=10.0, color="94A3B8", fill="FFFFFF")
+    lsr_bytes, _ = _data_uri_to_bytes(lsr_uri)
+    if lsr_bytes:
+        try:
+            _docx_clear_cell(lsr_cell)
+            p = lsr_cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run().add_picture(io.BytesIO(lsr_bytes), width=Cm(15.0))
+            _docx_set_cell_borders(lsr_cell)
+        except Exception:
+            _docx_write_cell(lsr_cell, "LSR", bold=True, size=10.0, color="94A3B8", fill="FFFFFF")
+
+    # Firmas
     footer = document.add_table(rows=1, cols=2)
     _docx_apply_table_grid(footer, [8.9, 8.9])
     _docx_write_cell(footer.cell(0, 0), f"Elaborado por: {elaborado_por or '-'}\nPuesto: {puesto_elaborado or '-'} · Fecha: {fecha_firma_txt}", size=6.4, fill="F8FAFC")
@@ -1319,9 +1317,12 @@ def html_to_word_bytes(
     return output.getvalue()
 
 
-def _xlsx_style_range(ws, cell_range: str, fill: str | None = None, font_color: str = "0F172A", bold: bool = False, size: float = 8.0, align: str = "center") -> None:
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+# ============================================================
+# EXPORTACIÓN EXCEL
+# ============================================================
 
+def _xlsx_style_range(ws, cell_range: str, fill: "str | None" = None, font_color: str = "0F172A", bold: bool = False, size: float = 8.0, align: str = "center") -> None:
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     side = Side(style="thin", color="111827")
     border = Border(left=side, right=side, top=side, bottom=side)
     for row in ws[cell_range]:
@@ -1332,13 +1333,11 @@ def _xlsx_style_range(ws, cell_range: str, fill: str | None = None, font_color: 
             if fill:
                 cell.fill = PatternFill("solid", fgColor=fill.replace("#", ""))
 
-
-def _xlsx_merge_write(ws, cell_range: str, value: Any, *, fill: str | None = None, font_color: str = "0F172A", bold: bool = False, size: float = 8.0, align: str = "center") -> None:
+def _xlsx_merge_write(ws, cell_range: str, value: Any, *, fill: "str | None" = None, font_color: str = "0F172A", bold: bool = False, size: float = 8.0, align: str = "center") -> None:
     top_left = cell_range.split(":", 1)[0]
     ws.merge_cells(cell_range)
     ws[top_left] = value
     _xlsx_style_range(ws, cell_range, fill=fill, font_color=font_color, bold=bold, size=size, align=align)
-
 
 def _xlsx_add_image(ws, data_uri: str, anchor: str, *, max_width_px: int, max_height_px: int) -> None:
     if not data_uri:
@@ -1346,7 +1345,6 @@ def _xlsx_add_image(ws, data_uri: str, anchor: str, *, max_width_px: int, max_he
     try:
         from openpyxl.drawing.image import Image as XLImage
         from PIL import Image as PILImage
-
         image_bytes, _ = _data_uri_to_bytes(data_uri)
         if not image_bytes:
             return
@@ -1361,10 +1359,8 @@ def _xlsx_add_image(ws, data_uri: str, anchor: str, *, max_width_px: int, max_he
     except Exception:
         return
 
-
-def _xlsx_energy_block(ws, row: int, start_col: int, label: str, fills: list[str], font_color: str = "0F172A") -> None:
+def _xlsx_energy_block(ws, row: int, start_col: int, label: str, fills: "list[str]", font_color: str = "0F172A") -> None:
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-
     side = Side(style="thin", color="111827")
     border = Border(left=side, right=side, top=side, bottom=side)
     for offset, fill in enumerate(fills):
@@ -1375,24 +1371,23 @@ def _xlsx_energy_block(ws, row: int, start_col: int, label: str, fills: list[str
         cell.font = Font(name="Bahnschrift", size=7, bold=True, color=font_color)
     ws.cell(row=row, column=start_col).value = label
 
-
 def build_modo_0_excel_bytes(
     ctx: Dict[str, Any],
     *,
     codigo: str,
     revision: str,
-    fecha: datetime.date | str,
+    fecha: "datetime.date | str",
     organizacion: str,
     logo_uri: str = "",
+    lsr_uri: str = "",
     personal_afectado: str,
     personal_autorizado: str,
     elaborado_por: str,
     aprobado_por: str,
     puesto_elaborado: str = "",
     puesto_aprobado: str = "",
-    fecha_firma: datetime.date | str | None = None,
+    fecha_firma: "datetime.date | str | None" = None,
 ) -> bytes:
-    """Genera un XLSX editable con celdas, textos, estilos, colores y bordes reales."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
@@ -1419,15 +1414,16 @@ def build_modo_0_excel_bytes(
 
     for col in range(1, 25):
         ws.column_dimensions[get_column_letter(col)].width = 4.2
-    for row in range(1, 50):
+    for row in range(1, 55):
         ws.row_dimensions[row].height = 18
 
     white = PatternFill("solid", fgColor="FFFFFF")
-    for row in range(1, 50):
+    for row in range(1, 55):
         for col in range(1, 25):
             ws.cell(row=row, column=col).fill = white
             ws.cell(row=row, column=col).font = Font(name="Bahnschrift", size=8)
 
+    # Encabezado
     _xlsx_merge_write(ws, "A1:C3", "" if logo_uri else organizacion, fill="FFFFFF", font_color="B91C1C", bold=True, size=8)
     _xlsx_add_image(ws, logo_uri, "A1", max_width_px=78, max_height_px=52)
     _xlsx_merge_write(ws, "D1:P1", "CONTROL DE ENERGÍAS PELIGROSAS", fill="050505", font_color="FFFFFF", bold=True, size=9)
@@ -1437,6 +1433,7 @@ def build_modo_0_excel_bytes(
         value_rng = rng.replace("Q", "T").replace("S", "X")
         _xlsx_merge_write(ws, value_rng, value, fill="F8FAFC", bold=True, size=8)
 
+    # Sitio + personal
     _xlsx_merge_write(ws, "A4:C6", f"Negocio:\n{ctx.get('negocio') or '-'}", fill="FFFFFF", size=8)
     _xlsx_merge_write(ws, "D4:F6", f"Sitio:\n{ctx.get('sitio') or '-'}", fill="FFFFFF", size=8)
     _xlsx_merge_write(ws, "G4:I6", f"Área:\n{ctx.get('area') or '-'}", fill="FFFFFF", size=8)
@@ -1446,9 +1443,11 @@ def build_modo_0_excel_bytes(
     _xlsx_merge_write(ws, "N6:X6", "Personal autorizado - Puestos de trabajo", fill="69C97F", bold=True, size=7)
     _xlsx_merge_write(ws, "N7:X7", personal_autorizado, fill="FFFFFF", size=7)
 
+    # Equipo
     _xlsx_merge_write(ws, "A8:C9", "Equipo:", fill="F8FAFC", bold=True, size=8)
     _xlsx_merge_write(ws, "D8:X9", f"{_upper(ctx.get('equipo') or 'EQUIPO')}\n{equipo_meta}", fill="FFFFFF", bold=True, size=11)
 
+    # Tareas
     _xlsx_merge_write(ws, "A10:C10", "Puntos de\nBloqueo", fill="69C97F", bold=True, size=7)
     _xlsx_merge_write(ws, "D10:F10", "Modo de\nIntervención", fill="69C97F", bold=True, size=7)
     _xlsx_merge_write(ws, "G10:X10", "Listado de tareas aplicable al presente procedimiento", fill="69C97F", bold=True, size=7)
@@ -1456,26 +1455,30 @@ def build_modo_0_excel_bytes(
     _xlsx_merge_write(ws, "D11:F14", "MODO 0", fill="69C97F", bold=True, size=14)
     _xlsx_merge_write(ws, "G11:X14", "\n".join(f"- {task}" for task in (ctx.get("tareas") or [])), fill="FFFFFF", size=7, align="left")
 
+    # Barra + foto
     _xlsx_merge_write(ws, "A15:X15", "Procedimiento - Control de Energías Peligrosas", fill="69C97F", bold=True, size=8)
     _xlsx_merge_write(ws, "A16:X27", "FOTO DEL PASO A PASO", fill="FFFFFF", font_color="94A3B8", bold=True, size=14)
     _xlsx_add_image(ws, ctx.get("photo_uri", ""), "H16", max_width_px=520, max_height_px=210)
 
-    headers = [
-        ("A28:C28", "Punto de\nBloqueo"), ("D28:F28", "Fuente de Energía"), ("G28:I28", "Magnitud"),
-        ("J28:L28", "Ubicación"), ("M28:P28", "Acción"), ("Q28:U28", "Verificación"), ("V28:X28", "Dispositivo(s) de\nAislamiento"),
-    ]
-    for rng, label in headers:
-        _xlsx_merge_write(ws, rng, label, fill="3B3B3B", font_color="FFFFFF", bold=True, size=7)
-    _xlsx_merge_write(ws, "A29:C35", "No aplica", fill="FFFFFF", size=7)
-    _xlsx_merge_write(ws, "D29:F35", "No Aplica", fill="FFFFFF", size=7)
-    _xlsx_merge_write(ws, "G29:I35", "No Aplica", fill="FFFFFF", size=7)
-    _xlsx_merge_write(ws, "J29:L35", "No Aplica", fill="FFFFFF", size=7)
-    accion = "1. Operar la máquina exclusivamente mediante el panel de Interfaz Hombre-Máquina (HMI) o mediante los controles normales asignados al operador, sin realizar intervención directa sobre el equipo.\n\n2. Mantener la operación dentro de las condiciones normales previstas, sin introducir manos u otros elementos en zonas de riesgo, partes móviles o sectores energizados.\n\n3. No retirar, anular, puentear ni desactivar resguardos, enclavamientos o cualquier dispositivo de seguridad durante la ejecución de la tarea.\n\n4. Detener la actividad y escalar la evaluación si la tarea requiere retirar, superar o intervenir cualquier sistema de protección de la máquina."
-    verificacion = "1. Confirmar visualmente que todos los resguardos y dispositivos de protección se encuentran instalados, en posición correcta y en condiciones funcionales.\n\n2. Verificar que el equipo opera dentro de sus parámetros normales y que no existe interacción directa del operador con partes móviles, energizadas o zonas de peligro.\n\n3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.\n\n4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0."
-    _xlsx_merge_write(ws, "M29:P35", accion, fill="FFFFFF", size=6)
-    _xlsx_merge_write(ws, "Q29:U35", verificacion, fill="FFFFFF", size=6)
-    _xlsx_merge_write(ws, "V29:X35", "No requerido", fill="FFFFFF", size=7)
+    # Procedimiento: solo Acción y Verificación
+    _xlsx_merge_write(ws, "A28:L28", "Acción", fill="3B3B3B", font_color="FFFFFF", bold=True, size=7)
+    _xlsx_merge_write(ws, "M28:X28", "Verificación", fill="3B3B3B", font_color="FFFFFF", bold=True, size=7)
+    accion = (
+        "1. Operar la máquina exclusivamente mediante el panel de Interfaz Hombre-Máquina (HMI) o mediante los controles normales asignados al operador, sin realizar intervención directa sobre el equipo.\n\n"
+        "2. Mantener la operación dentro de las condiciones normales previstas, sin introducir manos u otros elementos en zonas de riesgo, partes móviles o sectores energizados.\n\n"
+        "3. No retirar, anular, puentear ni desactivar resguardos, enclavamientos o cualquier dispositivo de seguridad durante la ejecución de la tarea.\n\n"
+        "4. Detener la actividad y escalar la evaluación si la tarea requiere retirar, superar o intervenir cualquier sistema de protección de la máquina."
+    )
+    verificacion = (
+        "1. Confirmar visualmente que todos los resguardos y dispositivos de protección se encuentran instalados, en posición correcta y en condiciones funcionales.\n\n"
+        "2. Verificar que el equipo opera dentro de sus parámetros normales y que no existe interacción directa del operador con partes móviles, energizadas o zonas de peligro.\n\n"
+        "3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.\n\n"
+        "4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0."
+    )
+    _xlsx_merge_write(ws, "A29:L35", accion, fill="FFFFFF", size=6, align="left")
+    _xlsx_merge_write(ws, "M29:X35", verificacion, fill="FFFFFF", size=6, align="left")
 
+    # Leyendas
     _xlsx_merge_write(ws, "A36:X36", "Clasificación de Energías Peligrosas", fill="69C97F", bold=True, size=8)
     energy_blocks = [
         (37, 1, "E: Eléctrica", ["000000", "000000", "000000", "000000"], "FFFFFF"),
@@ -1505,19 +1508,25 @@ def build_modo_0_excel_bytes(
     for rng, label, fill, font_color in locks:
         _xlsx_merge_write(ws, rng, label, fill=fill, font_color=font_color, bold=True, size=7)
 
-    _xlsx_merge_write(ws, "A42:L44", f"Elaborado por: {elaborado_por or '-'}\nPuesto: {puesto_elaborado or '-'} · Fecha: {fecha_firma_txt}", fill="F8FAFC", size=7)
-    _xlsx_merge_write(ws, "M42:X44", f"Aprobado por: {aprobado_por or '-'}\nPuesto: {puesto_aprobado or '-'} · Fecha: {fecha_firma_txt}", fill="F8FAFC", size=7)
+    # LSR
+    _xlsx_merge_write(ws, "A42:X48", "LSR", fill="FFFFFF", font_color="94A3B8", bold=True, size=14)
+    _xlsx_add_image(ws, lsr_uri, "D42", max_width_px=600, max_height_px=130)
+
+    # Firmas
+    _xlsx_merge_write(ws, "A49:L51", f"Elaborado por: {elaborado_por or '-'}\nPuesto: {puesto_elaborado or '-'} · Fecha: {fecha_firma_txt}", fill="F8FAFC", size=7)
+    _xlsx_merge_write(ws, "M49:X51", f"Aprobado por: {aprobado_por or '-'}\nPuesto: {puesto_aprobado or '-'} · Fecha: {fecha_firma_txt}", fill="F8FAFC", size=7)
 
     for row in range(37, 39):
         ws.row_dimensions[row].height = 26
-    ws.row_dimensions[40].height = 26
-    ws.row_dimensions[41].height = 26
+    for row in range(40, 42):
+        ws.row_dimensions[row].height = 26
+    for row in range(42, 49):
+        ws.row_dimensions[row].height = 20
 
-    ws.print_area = "A1:X44"
+    ws.print_area = "A1:X51"
     output = io.BytesIO()
     wb.save(output)
     return output.getvalue()
-
 
 
 # ============================================================
@@ -1711,6 +1720,8 @@ if not _mode_is_modo_0(modo_final):
     st.stop()
 
 logo_uri = _logo_data_uri(logo_file)
+lsr_uri = _lsr_data_uri()
+
 procedure_html = build_modo_0_html(
     ctx,
     codigo=codigo,
@@ -1718,6 +1729,7 @@ procedure_html = build_modo_0_html(
     fecha=fecha,
     organizacion=organizacion,
     logo_uri=logo_uri,
+    lsr_uri=lsr_uri,
     personal_afectado=personal_afectado,
     personal_autorizado=personal_autorizado,
     elaborado_por=elaborado_por,
@@ -1753,6 +1765,7 @@ with col_word:
             fecha=fecha,
             organizacion=organizacion,
             logo_uri=logo_uri,
+            lsr_uri=lsr_uri,
             personal_afectado=personal_afectado,
             personal_autorizado=personal_autorizado,
             elaborado_por=elaborado_por,
@@ -1775,6 +1788,7 @@ with col_excel:
             fecha=fecha,
             organizacion=organizacion,
             logo_uri=logo_uri,
+            lsr_uri=lsr_uri,
             personal_afectado=personal_afectado,
             personal_autorizado=personal_autorizado,
             elaborado_por=elaborado_por,
