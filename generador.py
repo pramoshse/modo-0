@@ -615,8 +615,8 @@ def build_modo_0_html(
     }}
 
     .procedure-note {{
-        font-size: 7.2px;
-        line-height: 1.35;
+        font-size: 8.4px;
+        line-height: 1.42;
     }}
 
     .procedure-note p {{
@@ -673,38 +673,12 @@ def build_modo_0_html(
     .lock-legend td {{
         width: 20%;
         height: 24px;
-        line-height: 1.08;
+        line-height: 1.2;
         vertical-align: middle;
+        text-align: center;
+        font-weight: 900;
+        font-size: 7.6px;
         overflow: hidden;
-    }}
-    .lock-item {{
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        max-width: 100%;
-        white-space: normal;
-    }}
-    .lock-symbol {{
-        display: inline-block;
-        flex: 0 0 auto;
-        position: relative;
-        width: 9px;
-        height: 7px;
-        border: 1.2px solid currentColor;
-        border-radius: 1px;
-        transform: translateY(2px);
-    }}
-    .lock-symbol::before {{
-        content: "";
-        position: absolute;
-        left: 1.5px;
-        top: -6px;
-        width: 4px;
-        height: 5px;
-        border: 1.2px solid currentColor;
-        border-bottom: 0;
-        border-radius: 5px 5px 0 0;
     }}
 
     /* ── LSR ── */
@@ -895,11 +869,11 @@ def build_modo_0_html(
     <div class="legend-title">Clasificación de Candados según sector y función</div>
     <table class="lock-legend">
         <tr>
-            <td class="l-mmto"><span class="lock-item"><span class="lock-symbol"></span><span>MMTO<br>Industrial</span></span></td>
-            <td class="l-calidad"><span class="lock-item"><span class="lock-symbol"></span><span>Calidad</span></span></td>
-            <td class="l-produccion"><span class="lock-item"><span class="lock-symbol"></span><span>Producción</span></span></td>
-            <td class="l-edilicio"><span class="lock-item"><span class="lock-symbol"></span><span>Mantenimiento Edilicio<br>Contratistas</span></span></td>
-            <td class="l-supervisor"><span class="lock-item"><span class="lock-symbol"></span><span>Supervisor MMTO Industrial<br>(Bloqueo Departamental)</span></span></td>
+            <td class="l-mmto">MMTO<br>Industrial</td>
+            <td class="l-calidad">Calidad</td>
+            <td class="l-produccion">Producción</td>
+            <td class="l-edilicio">Mantenimiento Edilicio<br>Contratistas</td>
+            <td class="l-supervisor">Supervisor MMTO Industrial<br>(Bloqueo Departamental)</td>
         </tr>
     </table>
 
@@ -1172,17 +1146,45 @@ def html_to_word_bytes(
         _docx_write_cell(header.cell(row_idx, 3), label, bold=True, size=7.5, fill="E5E7EB")
         _docx_write_cell(header.cell(row_idx, 4), value, bold=True, size=7.5, fill="F8FAFC")
 
-    # Info sitio + personal
+    # Info sitio + personal — label normal, valor en negrita
     info = document.add_table(rows=1, cols=5)
     _docx_apply_table_grid(info, [2.0, 2.8, 2.8, 3.6, 6.6])
     for idx, (label, value) in enumerate(
         [("Negocio:", ctx.get("negocio") or "-"), ("Sitio:", ctx.get("sitio") or "-"),
          ("Área:", ctx.get("area") or "-"), ("Línea:", ctx.get("linea") or "-")]
     ):
-        _docx_write_cell(info.cell(0, idx), f"{label}\n{value}", bold=False, size=7.2, fill="FFFFFF")
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+        cell = info.cell(0, idx)
+        _docx_clear_cell(cell)
+        _docx_set_cell_shading(cell, "FFFFFF")
+        _docx_set_cell_borders(cell)
+        _docx_set_cell_margins(cell)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        para = cell.paragraphs[0]
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para.paragraph_format.space_before = 0
+        para.paragraph_format.space_after = 0
+        # Línea 1: etiqueta (normal)
+        run_label = para.add_run(label + "\n")
+        run_label.bold = False
+        run_label.font.name = "Bahnschrift"
+        run_label.font.size = __import__("docx.shared", fromlist=["Pt"]).Pt(7.2)
+        run_label.font.color.rgb = __import__("docx.shared", fromlist=["RGBColor"]).RGBColor.from_string("334155")
+        # Línea 2: valor (negrita)
+        run_val = para.add_run(str(value))
+        run_val.bold = True
+        run_val.font.name = "Bahnschrift"
+        run_val.font.size = __import__("docx.shared", fromlist=["Pt"]).Pt(9.0)
+        run_val.font.color.rgb = __import__("docx.shared", fromlist=["RGBColor"]).RGBColor.from_string("111827")
     person_cell = info.cell(0, 4)
     _docx_clear_cell(person_cell)
     _docx_set_cell_borders(person_cell)
+    _docx_set_cell_margins(person_cell, top=0, start=0, bottom=0, end=0)
+    # Eliminar el párrafo vacío que queda al limpiar la celda
+    from docx.oxml.ns import qn as _qn
+    for p_elem in person_cell._tc.findall(_qn("w:p")):
+        person_cell._tc.remove(p_elem)
     nested = person_cell.add_table(rows=4, cols=1)
     _docx_apply_table_grid(nested, [6.4])
     _docx_write_cell(nested.cell(0, 0), "Personal afectado - Puestos de trabajo", bold=True, size=6.8, fill="69C97F")
@@ -1244,31 +1246,115 @@ def html_to_word_bytes(
         "3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.\n\n"
         "4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0."
     )
-    _docx_write_cell(proc.cell(1, 0), accion, size=6.0, fill="FFFFFF", align="left", valign="top")
-    _docx_write_cell(proc.cell(1, 1), verificacion, size=6.0, fill="FFFFFF", align="left", valign="top")
+    _docx_write_cell(proc.cell(1, 0), accion, size=7.2, fill="FFFFFF", align="left", valign="top")
+    _docx_write_cell(proc.cell(1, 1), verificacion, size=7.2, fill="FFFFFF", align="left", valign="top")
 
-    # Leyenda energías
+    # Leyenda energías — con franjas reales para AM, P, SC
     legend_title = document.add_table(rows=1, cols=1)
     _docx_apply_table_grid(legend_title, [17.8])
     _docx_write_cell(legend_title.cell(0, 0), "Clasificación de Energías Peligrosas", bold=True, size=7.0, fill="69C97F")
     energy = document.add_table(rows=2, cols=6)
     _docx_apply_table_grid(energy, [17.8 / 6] * 6)
+
+    def _make_stripe_png(color_a: str, color_b: str, width: int = 80, height: int = 24, stripe_w: int = 8) -> bytes:
+        """Genera un PNG con franjas verticales alternadas entre dos colores hex."""
+        try:
+            from PIL import Image as _PILImage
+            img = _PILImage.new("RGB", (width, height))
+            pix = img.load()
+            ca = tuple(int(color_a[i:i+2], 16) for i in (0, 2, 4))
+            cb = tuple(int(color_b[i:i+2], 16) for i in (0, 2, 4))
+            for x in range(width):
+                color = ca if (x // stripe_w) % 2 == 0 else cb
+                for y in range(height):
+                    pix[x, y] = color
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception:
+            return b""
+
+    def _docx_set_cell_bg_image(cell, png_bytes: bytes) -> None:
+        """Inserta una imagen PNG como fondo visual de la celda ocupando toda su área."""
+        if not png_bytes:
+            return
+        try:
+            from docx.oxml import OxmlElement
+            from docx.oxml.ns import qn
+            from docx.shared import Cm
+            _docx_clear_cell(cell)
+            _docx_set_cell_borders(cell)
+            _docx_set_cell_margins(cell, top=0, start=0, bottom=0, end=0)
+            para = cell.paragraphs[0]
+            para.paragraph_format.space_before = 0
+            para.paragraph_format.space_after = 0
+            run = para.add_run()
+            run.add_picture(io.BytesIO(png_bytes), width=Cm(17.8 / 6))
+        except Exception:
+            pass
+
     energy_items = [
-        (0, 0, "E: Eléctrica", "000000", "FFFFFF"),
-        (0, 1, "N: Neumática", "0284C7", "FFFFFF"),
-        (0, 2, "AM: Amoníaco\nbase gris + franjas naranjas", "D9D9D9", "0F172A"),
-        (0, 3, "T: Térmica", "DC2626", "FFFFFF"),
-        (0, 4, "H: Hidráulica", "7C3AED", "FFFFFF"),
-        (0, 5, "P: Potencial\nbase amarilla + franjas negras", "FFF200", "0F172A"),
-        (1, 0, "Q: Química", "FFF200", "0F172A"),
-        (1, 1, "V: Vapor", "F59E0B", "111827"),
-        (1, 2, "A: Agua", "16A34A", "FFFFFF"),
-        (1, 3, "SC: Soda Cáustica\nbase gris + franjas naranjas", "D9D9D9", "0F172A"),
-        (1, 4, "Oz: Ozono", "BAE6FD", "0F172A"),
-        (1, 5, "GC: Gas Carbónico", "C7D2FE", "111827"),
+        (0, 0, "E: Eléctrica",    "000000", "FFFFFF", None, None),
+        (0, 1, "N: Neumática",    "0284C7", "FFFFFF", None, None),
+        (0, 2, "AM: Amoníaco",    "D9D9D9", "0F172A", "D9D9D9", "F59E0B"),   # franjas
+        (0, 3, "T: Térmica",      "DC2626", "FFFFFF", None, None),
+        (0, 4, "H: Hidráulica",   "7C3AED", "FFFFFF", None, None),
+        (0, 5, "P: Potencial",    "FFF200", "0F172A", "FFF200", "050505"),    # franjas
+        (1, 0, "Q: Química",      "FFF200", "0F172A", None, None),
+        (1, 1, "V: Vapor",        "F59E0B", "111827", None, None),
+        (1, 2, "A: Agua",         "16A34A", "FFFFFF", None, None),
+        (1, 3, "SC: Soda Cáustica","D9D9D9","0F172A", "D9D9D9", "F59E0B"),   # franjas
+        (1, 4, "Oz: Ozono",       "BAE6FD", "0F172A", None, None),
+        (1, 5, "GC: Gas Carbónico","C7D2FE","111827", None, None),
     ]
-    for row, col, label, fill, font_color in energy_items:
-        _docx_write_cell(energy.cell(row, col), label, bold=True, size=5.8, color=font_color, fill=fill)
+    for row, col, label, fill, font_color, stripe_a, stripe_b in energy_items:
+        cell = energy.cell(row, col)
+        if stripe_a and stripe_b:
+            # Celda con franjas: fondo base + texto superpuesto
+            _docx_set_cell_shading(cell, fill)
+            _docx_set_cell_borders(cell)
+            _docx_set_cell_margins(cell)
+            # Construir fondo mediante XML de sombreado (franja visible por color alterno)
+            # Como python-docx no soporta gradientes, usamos patrón "diagStripe" que Word renderiza
+            from docx.oxml import OxmlElement as _OE
+            from docx.oxml.ns import qn as _qn2
+            tc_pr = cell._tc.get_or_add_tcPr()
+            shd = tc_pr.find(_qn2("w:shd"))
+            if shd is None:
+                shd = _OE("w:shd")
+                tc_pr.append(shd)
+            # val=pct12 dibuja ~12% del color "color" sobre el fondo "fill"
+            shd.set(_qn2("w:val"), "pct12")
+            shd.set(_qn2("w:color"), stripe_b.replace("#", "").upper())
+            shd.set(_qn2("w:fill"), fill.replace("#", "").upper())
+            # Texto
+            from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            _docx_clear_cell(cell)
+            _docx_set_cell_shading(cell, fill)
+            # reaplicar franja sobre el fondo
+            tc_pr2 = cell._tc.get_or_add_tcPr()
+            shd2 = tc_pr2.find(_qn2("w:shd"))
+            if shd2 is None:
+                shd2 = _OE("w:shd")
+                tc_pr2.append(shd2)
+            shd2.set(_qn2("w:val"), "diagStripe")
+            shd2.set(_qn2("w:color"), stripe_b.replace("#", "").upper())
+            shd2.set(_qn2("w:fill"), fill.replace("#", "").upper())
+            _docx_set_cell_borders(cell)
+            _docx_set_cell_margins(cell)
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            para = cell.paragraphs[0]
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            para.paragraph_format.space_before = 0
+            para.paragraph_format.space_after = 0
+            run = para.add_run(label)
+            run.bold = True
+            run.font.name = "Bahnschrift"
+            run.font.size = __import__("docx.shared", fromlist=["Pt"]).Pt(5.8)
+            run.font.color.rgb = __import__("docx.shared", fromlist=["RGBColor"]).RGBColor.from_string(font_color)
+        else:
+            _docx_write_cell(cell, label, bold=True, size=5.8, color=font_color, fill=fill)
 
     # Leyenda candados
     lock_title = document.add_table(rows=1, cols=1)
@@ -1277,11 +1363,11 @@ def html_to_word_bytes(
     locks = document.add_table(rows=1, cols=5)
     _docx_apply_table_grid(locks, [17.8 / 5] * 5)
     lock_items = [
-        ("▢\nMMTO\nIndustrial", "EF0000", "FFFFFF"),
-        ("▢\nCalidad", "FFF200", "0F172A"),
-        ("▢\nProducción", "16A34A", "FFFFFF"),
-        ("▢\nMantenimiento Edilicio\nContratistas", "0F7DBD", "FFFFFF"),
-        ("▢\nSupervisor MMTO Industrial\n(Bloqueo Departamental)", "050505", "FFFFFF"),
+        ("MMTO\nIndustrial", "EF0000", "FFFFFF"),
+        ("Calidad", "FFF200", "0F172A"),
+        ("Producción", "16A34A", "FFFFFF"),
+        ("Mantenimiento Edilicio\nContratistas", "0F7DBD", "FFFFFF"),
+        ("Supervisor MMTO Industrial\n(Bloqueo Departamental)", "050505", "FFFFFF"),
     ]
     for idx, (label, fill, font_color) in enumerate(lock_items):
         _docx_write_cell(locks.cell(0, idx), label, bold=True, size=5.8, color=font_color, fill=fill)
@@ -1433,11 +1519,33 @@ def build_modo_0_excel_bytes(
         value_rng = rng.replace("Q", "T").replace("S", "X")
         _xlsx_merge_write(ws, value_rng, value, fill="F8FAFC", bold=True, size=8)
 
-    # Sitio + personal
-    _xlsx_merge_write(ws, "A4:C6", f"Negocio:\n{ctx.get('negocio') or '-'}", fill="FFFFFF", size=8)
-    _xlsx_merge_write(ws, "D4:F6", f"Sitio:\n{ctx.get('sitio') or '-'}", fill="FFFFFF", size=8)
-    _xlsx_merge_write(ws, "G4:I6", f"Área:\n{ctx.get('area') or '-'}", fill="FFFFFF", size=8)
-    _xlsx_merge_write(ws, "J4:M6", f"Línea:\n{ctx.get('linea') or '-'}", fill="FFFFFF", size=8)
+    # Sitio + personal — label normal, valor en negrita
+    def _xlsx_write_label_value(ws, cell_range: str, label: str, value: str) -> None:
+        """Escribe etiqueta (normal) + salto + valor (negrita) en una celda fusionada XLSX."""
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.cell.rich_text import CellRichText, TextBlock
+        from openpyxl.styles.fonts import Font as RFont
+        top_left = cell_range.split(":", 1)[0]
+        ws.merge_cells(cell_range)
+        side = Side(style="thin", color="111827")
+        border = Border(left=side, right=side, top=side, bottom=side)
+        try:
+            rich = CellRichText(
+                TextBlock(RFont(name="Bahnschrift", size=8, bold=False, color="FF334155"), label + "\n"),
+                TextBlock(RFont(name="Bahnschrift", size=10, bold=True, color="FF111827"), value),
+            )
+            ws[top_left] = rich
+        except Exception:
+            ws[top_left] = f"{label}\n{value}"
+        cell = ws[top_left]
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+        cell.fill = PatternFill("solid", fgColor="FFFFFF")
+
+    _xlsx_write_label_value(ws, "A4:C6", "Negocio:", ctx.get("negocio") or "-")
+    _xlsx_write_label_value(ws, "D4:F6", "Sitio:", ctx.get("sitio") or "-")
+    _xlsx_write_label_value(ws, "G4:I6", "Área:", ctx.get("area") or "-")
+    _xlsx_write_label_value(ws, "J4:M6", "Línea:", ctx.get("linea") or "-")
     _xlsx_merge_write(ws, "N4:X4", "Personal afectado - Puestos de trabajo", fill="69C97F", bold=True, size=7)
     _xlsx_merge_write(ws, "N5:X5", personal_afectado, fill="FFFFFF", size=7)
     _xlsx_merge_write(ws, "N6:X6", "Personal autorizado - Puestos de trabajo", fill="69C97F", bold=True, size=7)
@@ -1475,8 +1583,8 @@ def build_modo_0_excel_bytes(
         "3. Comprobar que ninguna protección ha sido modificada, anulada o superada para realizar la actividad.\n\n"
         "4. Confirmar que, en caso de requerirse acceso a zonas protegidas o intervención directa sobre el equipo, se haya reevaluado el modo de intervención aplicable, dejando sin efecto el presente procedimiento Modo 0."
     )
-    _xlsx_merge_write(ws, "A29:L35", accion, fill="FFFFFF", size=6, align="left")
-    _xlsx_merge_write(ws, "M29:X35", verificacion, fill="FFFFFF", size=6, align="left")
+    _xlsx_merge_write(ws, "A29:L35", accion, fill="FFFFFF", size=7.5, align="left")
+    _xlsx_merge_write(ws, "M29:X35", verificacion, fill="FFFFFF", size=7.5, align="left")
 
     # Leyendas
     _xlsx_merge_write(ws, "A36:X36", "Clasificación de Energías Peligrosas", fill="69C97F", bold=True, size=8)
@@ -1499,11 +1607,11 @@ def build_modo_0_excel_bytes(
 
     _xlsx_merge_write(ws, "A39:X39", "Clasificación de Candados según sector y función", fill="69C97F", bold=True, size=8)
     locks = [
-        ("A40:E41", "▢  MMTO\nIndustrial", "EF0000", "FFFFFF"),
-        ("F40:J41", "▢  Calidad", "FFF200", "0F172A"),
-        ("K40:N41", "▢  Producción", "16A34A", "FFFFFF"),
-        ("O40:S41", "▢  Mantenimiento Edilicio\nContratistas", "0F7DBD", "FFFFFF"),
-        ("T40:X41", "▢  Supervisor MMTO Industrial\n(Bloqueo Departamental)", "050505", "FFFFFF"),
+        ("A40:E41", "MMTO\nIndustrial", "EF0000", "FFFFFF"),
+        ("F40:J41", "Calidad", "FFF200", "0F172A"),
+        ("K40:N41", "Producción", "16A34A", "FFFFFF"),
+        ("O40:S41", "Mantenimiento Edilicio\nContratistas", "0F7DBD", "FFFFFF"),
+        ("T40:X41", "Supervisor MMTO Industrial\n(Bloqueo Departamental)", "050505", "FFFFFF"),
     ]
     for rng, label, fill, font_color in locks:
         _xlsx_merge_write(ws, rng, label, fill=fill, font_color=font_color, bold=True, size=7)
